@@ -1,0 +1,43 @@
+# Render Blueprint (Infrastructure as Code) 골격.
+# 03-system-design.md §2.4/§5.4 참고. 시크릿 값(sync: false)은 이 파일에
+# 커밋하지 않고 Render 대시보드 Environment Variables에서 직접 입력한다.
+# 실제 Neon/Cloudflare R2 자격증명이 아직 발급되지 않았으므로(WU-01 시점),
+# 이 파일은 골격이며 10~12단계(배포)에서 실제 값 입력 후 사용한다.
+#
+# healthCheckPath(/healthz)는 WU-08에서 core 앱에 헬스체크 라우트가
+# 구현된 뒤에 추가할 것 — 아직 라우트가 없는 상태로 지정하면 배포 헬스체크가
+# 항상 실패한다.
+
+services:
+  - type: web
+    name: blog-web
+    runtime: python
+    plan: free
+    rootDir: webapp
+    buildCommand: "./build.sh"
+    startCommand: "gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker"
+    envVars:
+      - key: DJANGO_SETTINGS_MODULE
+        value: config.settings.production
+      - key: PYTHON_VERSION
+        value: "3.12.9"
+      - key: SECRET_KEY
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: DJANGO_ALLOWED_HOSTS
+        sync: false
+      - key: WAGTAILADMIN_BASE_URL
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET_NAME
+        sync: false
+      - key: R2_ENDPOINT_URL
+        sync: false
+      - key: R2_REGION
+        value: auto
+      - key: R2_PUBLIC_BASE_URL
+        sync: false

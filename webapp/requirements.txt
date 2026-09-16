@@ -1,0 +1,23 @@
+# 버전 고정 근거: docs/harness/decisions.md DEC-006(Wagtail 7.4 LTS/Django 5.2
+# LTS), DEC-008(Cloudflare R2), DEC-010(백업), 03-system-design.md §2. 모든
+# 패키지는 PyPI에 실제 존재하는 버전임을 `pip index versions <pkg>`로 직접
+# 확인했다(unit-01-note.md 게이트2 체크리스트 참고).
+
+Django==5.2.17
+wagtail==7.4.3
+
+# DB
+psycopg[binary]==3.2.10
+dj-database-url==2.3.0
+
+# 오브젝트 스토리지 (Cloudflare R2, S3 호환) — 03 §2.3, DEC-008
+django-storages[s3]==1.14.6
+boto3==1.35.36
+
+# 배포/서빙 — 03 §1.1, §2.4
+gunicorn==23.0.0
+uvicorn[standard]==0.34.0
+whitenoise==6.8.2
+
+# 로컬 개발 편의(.env 로딩)
+python-dotenv==1.0.1

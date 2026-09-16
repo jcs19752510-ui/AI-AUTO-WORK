@@ -1,0 +1,18 @@
+{# 500 페이지는 서버 오류 상황에서도 렌더링되어야 하므로 base.html을 extends하지
+   않는다(base.html의 wagtailuserbar/wagtail_site 태그는 DB 조회를 하는데, DB
+   장애가 500의 원인이면 그 태그 자체가 다시 실패할 수 있다). #}
+<!DOCTYPE html>
+<html lang="ko" dir="ltr">
+    <head>
+        <meta charset="utf-8" />
+        <title>서버 오류</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif; color: #1A1A1A; background: #FFFFFF; max-width: 720px; margin: 64px auto; padding: 0 16px; }
+        </style>
+    </head>
+    <body>
+        <h1>서버 오류</h1>
+        <p>죄송합니다. 일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.</p>
+    </body>
+</html>

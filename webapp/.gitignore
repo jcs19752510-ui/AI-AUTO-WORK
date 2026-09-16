@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+*.egg-info/
+
+# Django/Wagtail runtime artifacts
+db.sqlite3
+/staticfiles/
+/media/
+
+# 시크릿 — 절대 커밋하지 않는다 (03 §5.4)
+.env
+config/settings/local.py
+
+# 에디터/OS
+.DS_Store
+.vscode/
+.idea/
