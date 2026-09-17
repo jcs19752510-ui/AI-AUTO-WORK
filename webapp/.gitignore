@@ -3,12 +3,15 @@ __pycache__/
 *.pyc
 *.pyo
 .venv/
+.venv*/
 venv/
+venv*/
 env/
 *.egg-info/
 
 # Django/Wagtail runtime artifacts
 db.sqlite3
+db*.sqlite3
 /staticfiles/
 /media/
 
