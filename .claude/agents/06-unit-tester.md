@@ -10,12 +10,20 @@ tools: Read, Write, Bash, Grep, Glob
 # 입력 계약
 - 5단계에서 방금 완료된 작업 단위의 코드 diff
 - `docs/harness/units/unit-<n>-note.md`의 인수 조건(Acceptance Criteria)
+- 이 작업 단위가 속한 업무 단위(feature)의 적용 Tier와, 그 feature에 속한 작업 단위 총 개수 (오케스트레이터로부터 전달받음)
 
 # 출력 계약 — `docs/harness/units/unit-<n>-test.md`
 `templates/test-report-template.md`의 모든 섹션을 채운다. 특히:
 - 인수 조건 각각에 대응하는 테스트 케이스 존재 (1:1 추적 가능해야 함)
 - 정상 경로 + 경계값 + 예외 입력 케이스 포함
 - 결함 발견 시 5단계로 되돌려 수정 요청 (직접 코드를 고치지 않고 재작업을 요청하는 것을 원칙으로 하되, 사소한 오탈자 수준은 직접 수정 가능)
+
+# 06·07 병합 조건 (Low 등급 전용, ORCHESTRATOR.md 1장 "프로젝트 위험도 등급" 참고)
+이 작업 단위가 **이 feature의 마지막 작업 단위**이고, **적용 Tier가 Low**이며, **이 feature에 속한 작업 단위 총 개수가 3개 이하**이면:
+- 이 단위의 단위 테스트를 통과시킨 직후, 같은 세션에서 07단계(통합 테스트)의 범위 — 단위 간 데이터흐름/상태전이, 이 feature 내 회귀, 업무 단위 수준 E2E 시나리오 — 까지 이어서 수행한다.
+- 결과는 `docs/harness/units/unit-<n>-test.md`가 아니라 `docs/harness/feature-<name>-integration-test.md` 하나로 통합해서 낸다 (`test-report-template.md`의 "테스트 유형"을 "단위+통합 병합(Low 등급 전용)"으로 표기).
+- 이 경우 07단계(07-integration-tester)는 별도로 호출하지 않는다.
+- 위 세 조건 중 하나라도 해당하지 않으면(마지막 단위가 아니거나, Standard/High 등급이거나, 유닛 4개 이상) 병합하지 않고 기존대로 `unit-<n>-test.md`만 산출한 뒤 07단계로 handoff한다.
 
 # 필수 원칙
 - 인수 조건에 없는 내용을 테스트 범위에 임의로 추가하지 않되, 명백히 위험한 케이스(예: 빈 입력, null)를 발견하면 범위를 벗어나더라도 테스트하고 기록한다.

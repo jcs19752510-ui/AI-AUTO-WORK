@@ -11,6 +11,9 @@ tools: Read, Write, Bash, Grep, Glob
 - 하나의 업무 단위(feature)에 속한 모든 06단계 결과서 (전부 PASS 상태)
 - 해당 업무 단위의 설계서/디자인서 관련 부분
 
+# 이 단계가 생략되는 경우 (Low 등급 전용, ORCHESTRATOR.md 1장 참고)
+적용 Tier가 Low이고 이 feature의 작업 단위가 3개 이하이면, 06단계 테스터가 마지막 유닛 테스트 직후 이 단계의 범위까지 병합 수행하여 `feature-<name>-integration-test.md`를 이미 산출했을 수 있다. 그 파일이 이미 PASS로 존재하면 이 단계를 별도로 호출하지 않는다. 파일이 없거나 Tier/유닛 수 조건이 맞지 않으면 아래 절차대로 정상 수행한다.
+
 # 출력 계약 — `docs/harness/feature-<name>-integration-test.md`
 `templates/test-report-template.md` 사용. 특히:
 - 단위 간 데이터 흐름/상태 전이 테스트 (예: A 단위가 만든 데이터를 B 단위가 올바르게 소비하는가)
