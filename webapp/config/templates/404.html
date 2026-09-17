@@ -5,6 +5,14 @@
 {% block body_class %}template-404{% endblock %}
 
 {% block content %}
-<h1>페이지를 찾을 수 없습니다</h1>
-<p>요청하신 페이지가 존재하지 않거나 이동되었습니다.</p>
+<div class="error-page">
+  <svg class="error-page__icon" viewBox="0 0 24 24" width="64" height="64" aria-hidden="true" focusable="false">
+    <circle cx="12" cy="12" r="10" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    <line x1="9" y1="9" x2="15" y2="15" stroke="currentColor" stroke-width="1.5"/>
+    <line x1="15" y1="9" x2="9" y2="15" stroke="currentColor" stroke-width="1.5"/>
+  </svg>
+  <h1>페이지를 찾을 수 없습니다</h1>
+  <p>요청하신 페이지가 존재하지 않거나 이동되었습니다.</p>
+  <a class="button button--primary" href="/">홈으로 이동</a>
+</div>
 {% endblock %}

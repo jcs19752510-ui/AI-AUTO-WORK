@@ -1,5 +1,7 @@
 # 테스트 결과서 (Test Result Report) — WU-01 프로젝트 초기 설정
 
+> **재작업 이력**: 2026-09-16, 규칙F 재작업 1회 대응 재검증 라운드 추가(아래 "부록 A" 참고). 기존 §1~§9(최초 라운드, TC-001~TC-013, PASS)는 이번 변경과 무관하므로 내용을 보존하고 수정하지 않았다.
+
 ## 1. 개요
 - 테스트 대상: 작업 단위 WU-01 — `webapp/` 하위 Wagtail/Django 프로젝트 골격(코드 diff + `docs/harness/units/unit-01-note.md`)
 - 테스트 유형: 단위(Unit)
@@ -85,3 +87,116 @@
 - 1차 검증 결과 요약: 작성자(테스터 본인) 관점 재검토 — 인수조건 12개 전부 TC로 매핑됐는지, 상위 설계서/디자인서 수치와 모순이 없는지, "이상 없음" 표기마다 재현 근거가 있는지 확인. 결함 미발견.
 - 2차 검증 결과 요약: 독립 심사자 관점 재검토 — `config/settings/local.py` 시크릿 유출 경로 존재 여부(TC-013 추가), `DATABASE_URL` 형식 오류 미검증 사실 명시, TC-010의 `mysite`→`config` 해석 근거 보강. 이 3가지를 반영해 결과서를 v1→v2로 보강했으며, 결함으로 분류될 사안은 없었다(모두 범위 확인/근거 보강 성격).
 - 검증 로그 파일 경로: `docs/harness/units/verify-log_unit-01-test.md`
+
+---
+
+# 부록 A — 재작업 재검증 라운드 (규칙F, DEF-001 대응, 2026-09-16)
+
+> 이 부록은 위 §1~§9(최초 라운드, TC-001~TC-013, PASS)를 대체하지 않는다. 최초 라운드는 이번 변경(`SECURE_PROXY_SSL_HEADER` 추가, 신규 `config/middleware.py`)과 무관하므로 보존한다(핵심 항목만 회귀 재확인 — 아래 TC-R01~TC-R04). 이 부록은 `unit-01-note.md` §0(재작업 이력)과 §9-1(신규 인수조건 13~18번)을 입력으로 받아 처음부터 재현 검증한 결과다.
+>
+> **선행 확인**: 5단계 산출물(`unit-01-note.md`)의 §5(게이트1 정적분석/린트)·§6(게이트2 자체 코드리뷰 체크리스트) "재작업 라운드" 항목을 직접 재확인했다 — 저장소에 lint/type-check 설정(`pyproject.toml`/`.flake8`/`ruff.toml`/`.pre-commit-config.yaml`)이 존재하지 않음을 이번에도 `find`로 직접 재확인했고(§9-A5), 대체 수단인 `python -m py_compile config/middleware.py config/settings/production.py`을 이번 재검증에서 직접 재실행해 구문 오류 없음을 확인했다(§9-A5). 게이트2 체크리스트 8개 항목(재작업분 5개 포함)도 note 본문과 실제 코드를 대조해 근거가 실제로 성립함을 확인했다(예: `XForwardedForMiddleware`가 헤더 없음/빈 문자열일 때 `REMOTE_ADDR`을 건드리지 않는다는 주장은 §9-A3 edge case에서 직접 재현 확인). 따라서 5단계 게이트가 "통과했다고 주장만 한 것"이 아니라 실제로 통과했음을 이번 라운드에서 독립적으로 재확인했다 — 이 확인 없이는 6단계를 시작할 수 없다는 원칙(페르소나 지시사항)에 따른 선행 절차다.
+
+## 부록 A-1. 개요
+- 테스트 대상: WU-01 재작업분 — `webapp/config/settings/production.py`(`SECURE_PROXY_SSL_HEADER` 추가 등 §5.5.2~§5.5.4 반영)와 신규 `webapp/config/middleware.py`(`XForwardedForMiddleware`), `unit-01-note.md` §9-1(인수조건 13~18번).
+- 테스트 유형: 단위(Unit) — 규칙F 피드백 루프 재작업 재검증.
+- 테스트 목적: 07단계 통합테스터가 실증한 DEF-001(Critical, production 무한 HTTPS 리다이렉트 루프)이 3단계(설계 v1.2)→5단계(코드 수정) 경로로 해소되었는지, 그리고 5단계가 신규로 도입한 `XForwardedForMiddleware`가 설계(03 §5.5.4)가 요구한 rightmost 채택 방식대로 정확히 동작하는지를 처음부터 재현해 독립적으로 검증한다.
+- 관련 산출물:
+  - `docs/harness/units/unit-01-note.md` §0(재작업 이력), §9-1(신규 인수조건 13~18번)
+  - `docs/harness/03-system-design.md` v1.2 §5.5(리버스프록시 배포환경 보안설계 보완, 규칙F 재작업)
+  - `docs/harness/feature-WU-01-integration-test.md`(FAIL, DEF-001 원본 재현 근거 — IT-02/IT-03)
+  - `docs/harness/decisions.md` DEC-015
+- 테스트 수행자(에이전트): `06-unit-tester` (규칙F 재작업 재검증 라운드)
+- 테스트 일시: 2026-09-16
+
+## 부록 A-2. 테스트 범위 및 제외 범위
+- 범위(In-Scope):
+  1. `unit-01-note.md` §9-1 신규 인수조건 13~18번 전부(1:1 매핑, 아래 표 참고).
+  2. 기존 §9(1~12번) 중 이번 변경이 회귀를 일으킬 수 있는 핵심 경로만 최소 재확인 — 지시사항 원문("기존 unit-01-test.md의 1~12번 항목은 이번 변경과 무관하므로 전부 재실행할 필요는 없지만, 회귀가 없는지 핵심 항목(마이그레이션/manage.py check/기존 라우팅)은 최소한으로 재확인")에 따름: `makemigrations --check --dry-run`, `migrate`(home 마이그레이션 포함), dev `manage.py check`, 라우팅 3종(`GET /`, `GET /cms-admin/login/`, `GET /no-such-page/`).
+  3. 규칙C에 따라 인수조건에 없지만 명백히 위험하다고 판단한 추가 케이스: `XForwardedForMiddleware`가 `X-Forwarded-For` 헤더가 없거나 빈 문자열이거나 단일 값(콤마 없음)이거나 trailing comma인 경계/예외 입력에서 `REMOTE_ADDR`을 잘못 건드리지 않는지, 그리고 새로 미들웨어 체인 맨 앞에 미들웨어를 추가한 것이 기존 Host 헤더 검증(비인가 호스트 400)을 깨뜨리지 않는지.
+- 제외 범위 및 사유:
+  - §9(1~12번)의 나머지 세부 항목(패키지 버전 고정, production fail-fast 4종 전부, collectstatic 수치, render.yaml 문구 대조, `.env.example`/`.gitignore` 위생, `config/settings/local.py` 부재)은 이번 코드 변경(`production.py`의 일부·신규 `middleware.py`)과 무관한 영역이며 최초 라운드(§1~§9)에서 이미 PASS로 확정되어 있어 반복하지 않는다(지시사항과 동일 판단, 규칙B의 "이미 검증된 것을 반복하지 않는다" 원칙과 일관).
+  - 실제 gunicorn+uvicorn 프로세스 기동 및 Render 실제 인프라의 헤더 주입 — 최초 라운드와 동일 사유(Windows `fork()`/`fcntl` 미지원)로 이번 재검증에서도 로컬 검증 불가. `unit-01-note.md` §8-8이 이미 10단계 실측 필수로 명시했고, 이번 라운드도 동일 결론을 유지한다(7절 리스크 참고).
+  - 실제 Neon/R2 네트워크 연결 — 자격증명 미발급, 최초 라운드와 동일 사유.
+
+## 부록 A-3. 테스트 환경
+- OS/런타임: Windows 10 Pro 10.0.19045, Python 3.12.10(`py -3.12`).
+- 테스트 데이터: production 더미 환경변수(`SECRET_KEY`, `DJANGO_ALLOWED_HOSTS=www.example.com`, `RENDER_EXTERNAL_HOSTNAME=blog-web.onrender.com`, `DATABASE_URL=postgres://user:pass@localhost:5432/dummydb`, `R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY`/`R2_BUCKET_NAME`/`R2_ENDPOINT_URL` 전부 더미). `X-Forwarded-For`/`X-Forwarded-Proto`는 실제 Render 엣지가 앱에 전달하는 형태(단일 홉, `HTTP_X_FORWARDED_PROTO`/`HTTP_X_FORWARDED_FOR` WSGI 환경변수)를 `django.test.Client`/`RequestFactory`로 그대로 재현했다.
+- 전제 조건: 05단계(재작업)와 07단계(통합테스트, FAIL)가 사용한 검증용 venv/DB/staticfiles는 이미 삭제된 상태였다(작업 시작 전 `find webapp`로 25개 소스 파일만 남아있음을 직접 확인 — 24개(최초) + 신규 `config/middleware.py` 1개). 이번 재검증을 위해 **새 임시 venv(`webapp/.venv_reverify`)를 처음부터 생성**해 `pip install -r requirements.txt`부터 재현했다. 정적자산 검증을 위해 `collectstatic --noinput`(production 설정, WhiteNoise 매니페스트 스토리지)을 실행해 해시된 CSS 파일(`tokens.dce349c89221.css`)을 확보했다 — 07단계 IT-02/IT-03과 동일한 해시값으로, 이번 재작업이 정적자산 자체(내용)는 건드리지 않았음을 방증한다. DB 접근이 필요한 라우트는 최초 라운드/07단계와 동일 사유(production은 Neon 전용 설계, SQLite를 물리면 `ssl_require=True`와 충돌)로 이번에도 사용하지 않았고, 이번 재검증의 핵심 대상(SSL 리다이렉트 경계, XFF 미들웨어, MIDDLEWARE 순서, 설정값)은 전부 DB 접근이 필요 없는 경로로 독립적으로 검증 가능하다.
+
+## 부록 A-4. 테스트 케이스 및 결과
+
+| ID | 시나리오(대응 인수조건) | 사전조건 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|----------|-----------|-----------|-----------|-----------|------|
+| TC-014 | production 설정에서 `SECURE_PROXY_SSL_HEADER` 값 (§9-1 13번) | production 더미 환경변수 전부 설정 | `DJANGO_SETTINGS_MODULE=config.settings.production`에서 `django.setup()` 후 `settings.SECURE_PROXY_SSL_HEADER` 조회 | `("HTTP_X_FORWARDED_PROTO", "https")` | `('HTTP_X_FORWARDED_PROTO', 'https')` | PASS | 03 §5.5.2 코드 예시와 문자 그대로 일치 |
+| TC-015 | `X-Forwarded-Proto` 헤더 없이 정적자산 요청 → 회귀 없이 301/302 (§9-1 14번) | production 더미 환경변수 전부, `collectstatic --noinput` 완료(214개 복사/626개 post-process, 07단계와 동일 수치) | `test.Client().get("/static/css/tokens.dce349c89221.css", HTTP_HOST="blog-web.onrender.com")` (X-Forwarded-Proto 헤더 없음) | 301 또는 302로 HTTPS 리다이렉트(헤더 없을 때는 정상적으로 리다이렉트되어야 함 — 무조건 200이 아님) | `301`, `Location: https://blog-web.onrender.com/static/css/tokens.dce349c89221.css` | PASS | 07단계 IT-02가 결함으로 지목했던 것은 "헤더가 있어도 301이 반복되는 것"이었지, "헤더가 없을 때 301이 나는 것" 자체는 정상 동작이다 — 이 케이스가 여전히 301이라는 것은 회귀가 아니라 SSL 강제 리다이렉트 기능 자체가 정상 유지되고 있다는 증거 |
+| TC-016 | `X-Forwarded-Proto: https` 헤더 추가 → 200 (§9-1 15번, DEF-001 직접 해소 확인) | TC-015와 동일 사전조건 | 동일 요청에 `HTTP_X_FORWARDED_PROTO="https"` 추가 | 200 | 200, `Content-Type: text/css; charset="utf-8"` | PASS | DEF-001의 근본 원인(SECURE_PROXY_SSL_HEADER 미설정)이 코드 수정으로 해소됨을 직접 증명 |
+| TC-016b | (§9-1 15번 후반) 같은 요청을 반복해도 301로 되돌아가지 않는지(무한 루프 재발 방지) | TC-016 완료 | 동일 요청(`HTTP_X_FORWARDED_PROTO="https"`)을 동일 `Client` 인스턴스로 2회, 3회 반복 | 매 요청마다 200 유지, 301로 회귀하지 않음 | 2회차 200, 3회차 200 — 전부 200 유지, 301 재발 없음 | PASS | 07단계 IT-02/IT-03이 재현했던 "반복해도 계속 301"이던 무한 루프 증상이 이번 재작업 후 3회 연속 요청에서 전혀 재현되지 않음을 직접 확인 |
+| TC-017 | `XForwardedForMiddleware` — `X-Forwarded-For: 1.2.3.4, 10.0.0.5` → rightmost 채택 (§9-1 16번) | production 설정 로드 완료 | `RequestFactory().get("/", HTTP_X_FORWARDED_FOR="1.2.3.4, 10.0.0.5")`를 `XForwardedForMiddleware` 인스턴스에 직접 통과 | `request.META["REMOTE_ADDR"] == "10.0.0.5"` | `REMOTE_ADDR` == `'10.0.0.5'` | PASS | 03 §5.5.4가 요구한 rightmost(직전 신뢰 홉이 추가한 값) 채택 방식과 정확히 일치 |
+| TC-017b | (경계/예외) 헤더 자체가 없는 요청 | 동일 | `RequestFactory().get("/")`(`X-Forwarded-For` 헤더 없음)를 동일 미들웨어에 통과 | `REMOTE_ADDR`이 미들웨어 통과 전후 변경되지 않음(회귀 없음) | 통과 전 `127.0.0.1`, 통과 후 `127.0.0.1` — 변경 없음 | PASS | 인수조건 범위 밖이지만, "헤더가 없는 요청"은 dev 환경 및 Render 엣지 예외 상황에서 실제로 발생 가능한 명백히 위험한 케이스라 판단해 추가 검증(규칙C) |
+| TC-017c | (예외 입력) `X-Forwarded-For: ""`(빈 문자열) | 동일 | `RequestFactory().get("/", HTTP_X_FORWARDED_FOR="")`를 동일 미들웨어에 통과 | `REMOTE_ADDR` 변경되지 않음(빈 값을 IP로 오인해 덮어쓰지 않음) | 통과 전후 `127.0.0.1`로 동일, 변경 없음 | PASS | `if forwarded_for:`가 빈 문자열을 falsy로 걸러내는지 직접 확인 |
+| TC-017d | (경계) `X-Forwarded-For: "1.2.3.4, "`(trailing comma, 마지막 값이 공백뿐) | 동일 | `RequestFactory().get("/", HTTP_X_FORWARDED_FOR="1.2.3.4, ")`를 동일 미들웨어에 통과 | `REMOTE_ADDR` 변경되지 않음(공백만 있는 값을 IP로 오인해 덮어쓰지 않음) | 통과 전후 `127.0.0.1`로 동일, 변경 없음 | PASS | `split(",")[-1].strip()`이 빈 문자열이 되는 경우 `if client_ip:`로 재차 방어됨을 확인(코드의 이중 방어 로직이 실제로 작동함을 실측) |
+| TC-017e | (경계) `X-Forwarded-For: "9.9.9.9"`(콤마 없는 단일 값, 단일 홉 경유 시나리오) | 동일 | `RequestFactory().get("/", HTTP_X_FORWARDED_FOR="9.9.9.9")`를 동일 미들웨어에 통과 | `REMOTE_ADDR == "9.9.9.9"` | `REMOTE_ADDR` == `'9.9.9.9'` | PASS | 콤마가 없어도 `split(",")[-1]`이 전체 문자열을 그대로 반환해 정상 동작 |
+| TC-018 | production `MIDDLEWARE`에서 `XForwardedForMiddleware`가 최상단인지 (§9-1 17번) | production 더미 환경변수 전부 | `settings.MIDDLEWARE` 조회 | `MIDDLEWARE[0] == "config.middleware.XForwardedForMiddleware"` | `MIDDLEWARE[0]` == `'config.middleware.XForwardedForMiddleware'`, 전체 리스트에 정확히 1회만 등장, 나머지 9개 미들웨어는 base.py 순서 그대로 유지됨을 확인 | PASS | 뒤 단계(SecurityMiddleware 등)가 정규화된 REMOTE_ADDR을 보도록 하는 설계 의도(03 §5.5.4)와 일치 |
+| TC-019 | dev 설정 — `manage.py check`/`makemigrations --check --dry-run` 회귀 없음, dev `MIDDLEWARE`에 신규 미들웨어 미포함 (§9-1 18번) | `DJANGO_SETTINGS_MODULE=config.settings.dev` | ① `python manage.py check` ② `python manage.py makemigrations --check --dry-run` ③ `settings.MIDDLEWARE`에 `"config.middleware.XForwardedForMiddleware"` 포함 여부 조회 | ① "System check identified no issues" ② "No changes detected" ③ `False`(dev에는 미포함) | ① 동일 문자열, exit 0 ② "No changes detected" ③ `False` — dev MIDDLEWARE 9개 전부 base.py 원본과 동일, 신규 미들웨어 없음 | PASS | `base.py`를 건드리지 않았다는 note §0 주장과 실제 코드가 일치함을 직접 확인 |
+| TC-R01 | (회귀, 핵심 항목) `makemigrations --check --dry-run` | 신규 venv, `pip install` 완료 | `python manage.py makemigrations --check --dry-run` | "No changes detected" | "No changes detected", exit 0 | PASS | 지시사항이 명시한 "최소한 재확인" 대상 |
+| TC-R02 | (회귀, 핵심 항목) `migrate`, `home` 앱 CircularDependencyError 없음 | 동일 | `python manage.py migrate` → `showmigrations home` | `home.0001_initial`/`0002_create_homepage` 오류 없이 적용 | `showmigrations home` → `[X] 0001_initial`, `[X] 0002_create_homepage`, 전체 마이그레이션 exit 0, 예외 없음 | PASS | |
+| TC-R03 | (회귀, 핵심 항목) dev `manage.py check` | 동일 | `python manage.py check`(dev 기본값) | "System check identified no issues" | 동일 문자열, exit 0 | PASS | |
+| TC-R04 | (회귀, 핵심 항목) 기존 라우팅 3종 | TC-R02 완료 | `test.Client().get("/")`, `.get("/cms-admin/login/")`, `.get("/no-such-page-xyz/")` | 200, 200, 404 | 200, 200, 404(콘솔 `Not Found: /no-such-page-xyz/` 로그 확인) | PASS | |
+| TC-A01 | (위험 기반 추가, §6.4) 새 미들웨어 순서 변경이 기존 Host 헤더 검증(비인가 호스트 400)을 깨뜨리지 않는지 | production 더미 환경변수, `ALLOWED_HOSTS=[blog-web.onrender.com, www.example.com]` | `test.Client().get("/nonexistent-abc/", HTTP_HOST="evil.example.net", HTTP_X_FORWARDED_PROTO="https")` 및 동일 요청에 `HTTP_X_FORWARDED_FOR="1.2.3.4, 5.6.7.8"` 추가 | 둘 다 400(DisallowedHost) — 07단계 IT-04가 확정한 기존 동작 유지 | 둘 다 400 | PASS | `XForwardedForMiddleware`를 체인 맨 앞에 추가한 것이 `ALLOWED_HOSTS` 검증(Django CommonMiddleware/get_host)을 우회하거나 깨뜨리지 않음을 직접 확인(인수조건 범위 밖이지만, 미들웨어 순서 변경은 명백히 위험도가 높은 변경이라 판단해 규칙C에 따라 추가 검증) |
+
+> 정상 경로(TC-014, TC-016, TC-018, TC-R01~R04) + 경계값(TC-016b 반복 요청, TC-017d trailing comma, TC-017e 단일 값) + 예외 입력(TC-017b 헤더 없음, TC-017c 빈 문자열) + 회귀 검증(TC-015 "헤더 없으면 여전히 리다이렉트되어야 정상", TC-019, TC-A01)을 모두 포함했다. §9-1 신규 인수조건 13~18번은 TC-014~TC-019로 1:1 매핑되며 누락 없음(아래 5절 커버리지 참고).
+
+## 부록 A-5. 커버리지
+- 커버리지 지표: `unit-01-note.md` §9-1 신규 인수조건 13~18번 = 6/6 (100%), TC-014~TC-019(하위 케이스 포함 총 11개 케이스)로 매핑. 회귀 확인 대상(마이그레이션/check/라우팅) 4개는 TC-R01~R04로 전부 재확인. 위험 기반 추가 케이스(TC-A01) 1개 별도 수행.
+- 인수조건 ↔ 테스트 케이스 매핑표(추적성 확인):
+
+| 인수조건 | 테스트 케이스 |
+|---|---|
+| §9-1 13. `SECURE_PROXY_SSL_HEADER` 값 확인 | TC-014 |
+| §9-1 14. 헤더 없이 정적자산 요청 → 301/302 회귀 없음 | TC-015 |
+| §9-1 15. 헤더 있으면 200, 반복해도 200 유지(무한루프 재발 방지) | TC-016, TC-016b |
+| §9-1 16. `XForwardedForMiddleware` rightmost 채택 | TC-017 (+ TC-017b/c/d/e 경계) |
+| §9-1 17. `MIDDLEWARE` 최상단 위치 | TC-018 |
+| §9-1 18. dev 설정 회귀 없음(미들웨어 미포함) | TC-019 |
+
+- 커버되지 않은 부분과 사유:
+  - 실제 gunicorn+uvicorn 프로세스 기동 및 Render 실제 인프라에서의 `X-Forwarded-Proto`/`X-Forwarded-For` 헤더 실측 — Windows 로컬 한계로 이번에도 미검증. `unit-01-note.md` §8-8/§8-9가 이미 10단계 실측 필수로 명시했고, 이번 부록에서도 동일하게 리스크로 유지한다(7절 참고). **다만 TC-016/TC-016b에서 그 헤더 주입을 `test.Client`로 정확히 재현**했으므로, "코드 수정으로 무한루프가 실제로 해소되는지"는 이번 라운드에서 사실상 검증되었다.
+  - `X-Forwarded-For`를 Render가 자체적으로 신뢰 보증(덮어쓰기)하는지 여부 — 03 §5.5.4/`unit-01-note.md` §8-9가 "확인 필요"로 이미 이월한 항목이며, 이번 재검증은 설계서가 지시한 보수적 기본값(rightmost 채택)이 코드에 정확히 구현되었는지만 확인 범위로 했다(설계 자체의 공식 문서 재확인은 이번 6단계 범위 밖).
+  - REQ-ID 커버리지: **해당 없음(근거)** — `docs/harness/traceability.md`를 이번에도 직접 열람해 재확인한 결과 WU-01을 참조하는 REQ-ID 행이 없다(최초 라운드 §5와 동일 결론, `feature-WU-01-integration-test.md` §5의 3중 교차 확인과도 일치). 따라서 이번 라운드도 traceability.md의 "단위테스트" 컬럼을 갱신할 대상 REQ-ID 행이 존재하지 않는다.
+
+## 부록 A-6. 결함(Defect) 목록
+| ID | 설명 | 재현 절차 | 심각도 | 상태 | 조치 내용 |
+|----|------|-----------|--------|------|-----------|
+| (해당 없음) | | | | | |
+
+- **결함 없음.** TC-014~TC-019(하위 케이스 포함 11개) + 회귀 4개(TC-R01~R04) + 위험 기반 추가 1개(TC-A01), 총 16개 케이스를 전부 재현했고, 모든 케이스에서 "실제 결과"가 "예상 결과"와 정확히 일치했다(§4 표의 각 셀에 구체적 상태코드/문자열/값 대조 기록). DEF-001(원본 결함)은 TC-016/TC-016b에서 200 유지·301 재발 없음으로 **직접 해소가 증명**되었으며, TC-015로 "헤더 없을 때는 여전히 정상적으로 리다이렉트되어야 한다"는 정상 동작 자체가 훼손되지 않았음도 함께 확인했다(결함 수정이 다른 정상 기능을 깨뜨리지 않았는지까지 검증 — 단순히 "고쳐졌다"만 보고 끝내지 않음).
+
+## 부록 A-7. 리스크 및 잔존 이슈
+- **10단계 실측 필수(이월, 신규 아님)**: `unit-01-note.md` §8-8이 이미 명시한 대로, 실제 gunicorn+uvicorn 프로세스가 Render 환경에서 Render 엣지가 보내는 실제 `X-Forwarded-Proto`/`X-Forwarded-For` 헤더로 무한루프 없이 동작하는지는 10단계에서 반드시 실측해야 한다. 이번 6단계 재검증은 `test.Client`/`RequestFactory` 기반 시뮬레이션이며, 이는 07단계(IT-02/IT-03)와 05단계(§4-1)가 이미 사용한 것과 동일한 방법론이므로 신뢰할 수 있는 근거이지만 실제 프로세스 기동을 대체하지는 못한다.
+- **`X-Forwarded-For` Render 자체 관리 여부 미확정(이월, 신규 아님)**: 03 §5.5.4/note §8-9와 동일. 이번 재검증에서 상태 변화 없음.
+- **신뢰 경계 전제(스푸핑 조건) 재확인 권고**: 03 §5.5.2가 명시한 대로, `SECURE_PROXY_SSL_HEADER`/`XForwardedForMiddleware`를 신뢰하는 것은 "앱 컨테이너가 Render 엣지로부터만 트래픽을 받는다"는 단일 홉 전제에서만 안전하다. 이번 6단계 범위에서는 코드가 이 전제를 정확히 반영했는지(dev에는 미적용 등)만 확인했고, 실제 배포 인프라가 이 전제를 계속 만족하는지는 운영 단계(10~13단계)에서 지속적으로 재확인해야 할 운영 리스크로 남는다(신규 결함 아님, 설계서가 이미 명시한 주의사항의 코드 반영 여부만 확인함).
+- 최초 라운드(§7)가 이미 인계한 리스크(gunicorn 미검증, Neon/R2 미발급, `DATABASE_URL` 형식 오류 미검증, Pretendard 웹폰트, HSTS max-age, healthCheckPath 미설정)는 이번 재작업 재검증 범위에서 상태 변화 없이 그대로 유지된다(중복 기록하지 않고 원본 참조).
+
+## 부록 A-8. 결론 및 판정
+- [x] **PASS** — 다음 단계(07-integration-tester, `feature-WU-01-integration-test.md`의 IT-02/IT-03 재실행) 진행 가능
+- [ ] CONDITIONAL PASS
+- [ ] FAIL
+
+판정 근거: `unit-01-note.md` §9-1 신규 인수조건 13~18번 전부를 새로 생성한 임시 venv에서 처음부터 재현해 PASS를 확인했다(TC-014~TC-019, 하위 경계/예외 케이스 포함 11개). 07단계가 재현했던 DEF-001(Critical, 무한 HTTPS 리다이렉트 루프)이 TC-016/TC-016b에서 실제로 해소되었음을 직접 증명했고, TC-015로 정상 리다이렉트 기능 자체는 회귀 없이 유지됨도 함께 확인했다. `XForwardedForMiddleware`(TC-017 계열)와 `MIDDLEWARE` 순서(TC-018)도 03 §5.5.4가 요구한 사양과 정확히 일치했다. 지시사항이 요구한 핵심 회귀 항목(마이그레이션/`manage.py check`/기존 라우팅, TC-R01~R04)과 dev 설정에 신규 미들웨어가 유입되지 않았는지(TC-019)도 전부 회귀 없음을 확인했다. 결함 0건. 규칙F 관점에서: 3단계(설계 v1.2)→5단계(코드)로 이어진 근본 원인 수정이 실제로 유효함이 6단계에서 독립적으로 재현·증명되었으므로, 이 재작업 라운드에서 5단계로 다시 되돌릴 결함이 없다. 다음 단계는 규칙F-3(하위 단계 재실행 의무)에 따라 7단계(`feature-WU-01-integration-test.md`)의 IT-02/IT-03을 재실행해 PASS로 갱신하는 것이다(`unit-01-note.md` §10과 동일 순서).
+
+## 부록 A-9. 내부 검증 (최소 2회, `verification-log-template.md` 사용)
+- 1차 검증 결과 요약: 작성자(06-unit-tester 본인) 관점 재검토 — §9-1 인수조건 13~18번 전부가 TC-014~TC-019로 1:1 매핑되는지(위 5절 매핑표로 재확인), 각 "예상 결과"가 `unit-01-note.md`/03 §5.5.2~§5.5.4 원문 문구에 실제로 근거하는지(추측 아님), TC-015가 "헤더 없으면 무조건 200"이 아니라 "301이 정상"이라는 것을 정확히 검증하고 있는지(자칫 반대로 설계하면 회귀를 놓칠 수 있는 지점) 재확인. 결함 미발견.
+- 2차 검증 결과 요약: "이 결과서를 오늘 처음 받아보는 7단계 담당자" 관점 재검토 — (a) 최초 초안에는 TC-017b~e(경계/예외 XFF 입력)가 없었으나, "이 테스트를 통과했다고 통합테스트로 넘겨도 되는가"를 의심하는 과정에서 `XForwardedForMiddleware`가 헤더 없음/빈 문자열/trailing comma/단일 값 같은 실제 운영에서 흔히 나타날 수 있는 입력에 안전한지가 인수조건에 명시적으로 없다는 것을 발견해 추가했다(규칙C). (b) 미들웨어를 체인 맨 앞에 추가하는 것이 기존 Host 검증(07단계 IT-04가 확정한 400 차단)을 깨뜨릴 가능성을 재검토해 TC-A01을 추가했다 — 초안에는 없었으나, "미들웨어 순서 변경"은 그 자체로 위험도가 높은 변경이라 판단했다. (c) TC-015의 "예상 결과"를 처음에는 "301"로만 적었으나, WhiteNoise가 302를 반환할 가능성도 배제할 수 없어 "301 또는 302"로 보강하고 실제 결과(301)와 구분해 기록했다(예상 결과를 실제 관측값에 끼워 맞추지 않기 위한 조치 — 실제로는 301이 나왔으므로 이 우려는 기우로 확인됐지만, 사전에 좁게 단정하지 않은 것이 방법론적으로 옳았다고 판단해 그대로 남긴다). 이 3가지를 반영해 초안 → 최종본으로 보강했으며, 결함 목록(0건)은 1차와 2차 모두 동일하게 유지되었다(새 결함 추가 없음, 테스트 케이스 커버리지만 보강).
+- 검증 로그 파일 경로: `docs/harness/units/verify-log_unit-01-test.md`(§ "재작업 재검증 라운드" 추가분)
+
+## 절차 흐름 (참고용 다이어그램)
+```mermaid
+flowchart TD
+    A["대상/범위/환경 정의(1~3절, 부록A-1~A-3)"] --> B["테스트 케이스 작성·실행(4절, 부록A-4): TC-001~013 최초 + TC-014~019/R01~04/A01 재작업"]
+    B --> C["커버리지 확인(5절, 부록A-5): 최초 12개 100% + 신규 6개 100%"]
+    C --> D["결함 목록 기록(6절, 부록A-6): 결함 0건(최초/재작업 모두)"]
+    D --> E{Critical/High 결함?}
+    E -->|Yes| F["FAIL(8절) — 규칙F로 근본원인 단계 재작업 요구"]
+    E -->|No| G["verification-log 2회 이상(9절, 부록A-9)"]
+    G --> H["PASS → 7단계(feature-WU-01-integration-test.md) IT-02/IT-03 재실행"]
+```

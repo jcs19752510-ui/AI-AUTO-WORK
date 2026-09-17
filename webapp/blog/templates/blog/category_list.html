@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}{{ category.name }} 카테고리{% endblock %}
+
+{% block body_class %}template-category-list{% endblock %}
+
+{% comment %}NewsletterSubscribeForm(REQ-016) — S-03은 04 §2 Footer 명세가 허용하는 "홈/목록형 화면"이다.{% endcomment %}
+{% block footer %}{% include "partials/footer.html" with show_footer_newsletter=True %}{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="브레드크럼">
+  <ol>
+    <li><a href="/">홈</a></li>
+    <li aria-current="page">{{ category.name }}</li>
+  </ol>
+</nav>
+
+<h1>{{ category.name }}</h1>
+
+{% include "blog/partials/_post_list.html" with page_obj=page_obj empty_message="이 카테고리에는 아직 게시된 글이 없습니다." empty_cta_url="/" %}
+{% endblock %}

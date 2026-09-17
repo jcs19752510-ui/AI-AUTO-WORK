@@ -41,3 +41,11 @@ services:
         value: auto
       - key: R2_PUBLIC_BASE_URL
         sync: false
+      # 백업 버킷(backup-private, WU-03 설정 골격/WU-10 실사용) — 비워두면
+      # "backup" 스토리지 별칭이 비활성 상태로 유지되므로 배포를 막지 않는다.
+      - key: R2_BACKUP_BUCKET_NAME
+        sync: false
+      - key: R2_BACKUP_ACCESS_KEY_ID
+        sync: false
+      - key: R2_BACKUP_SECRET_ACCESS_KEY
+        sync: false

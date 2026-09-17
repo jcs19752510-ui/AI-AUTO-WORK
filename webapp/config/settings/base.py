@@ -22,9 +22,15 @@ load_dotenv(BASE_DIR / ".env")
 # Application definition
 
 INSTALLED_APPS = [
+    "core",
+    "blog",
+    "custom_images",
+    "legal",
+    "subscribers",
     "home",
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
+    "wagtail.contrib.sitemaps",
     "wagtail.embeds",
     "wagtail.sites",
     "wagtail.users",
@@ -38,6 +44,7 @@ INSTALLED_APPS = [
     "taggit",
     "django_filters",
     "django.contrib.admin",
+    "django.contrib.sitemaps",
     "django.contrib.auth",
     "django.contrib.contenttypes",
     "django.contrib.sessions",
@@ -72,6 +79,10 @@ TEMPLATES = [
                 "django.template.context_processors.request",
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
+                # 04-ux-design.md §2 전역 Header/Nav 카테고리 목록 (WU-04)
+                "blog.context_processors.nav_categories",
+                # REQ-005(SEO) canonical URL — DEC-017 정규 URL 설계와 정합 (WU-05)
+                "core.context_processors.canonical_url",
             ],
         },
     },
@@ -131,8 +142,9 @@ MEDIA_ROOT = BASE_DIR / "media"
 MEDIA_URL = "/media/"
 
 # 기본값은 로컬 파일시스템(dev)과 Django 기본 정적파일 스토리지다.
-# production.py가 "default"(미디어)는 Cloudflare R2(S3Boto3Storage)로(03 §2.3,
-# DEC-008), "staticfiles"는 WhiteNoise의 매니페스트 스토리지로 각각 덮어쓴다.
+# production.py가 "default"(미디어, media-public 버킷)는 Cloudflare
+# R2(storages.backends.s3.S3Storage)로(03 §2.3, DEC-008), "staticfiles"는
+# WhiteNoise의 매니페스트 스토리지로 각각 덮어쓴다.
 # 정적 CSS/JS는 WhiteNoise가 Django 프로세스 안에서 직접 서빙하므로 R2로 보내지
 # 않는다(03 §2.4, 과설계 방지). dev에서 매니페스트 스토리지를 쓰지 않는 이유는
 # collectstatic을 매번 실행하지 않고 runserver로 바로 개발하기 위함이다.
@@ -189,6 +201,17 @@ WAGTAILDOCS_EXTENSIONS = [
     "zip",
 ]
 
-# Maximum upload size for documents in bytes (03 §5.5, 정확한 이미지 업로드 상한은
-# WU-03에서 확정 — 여기서는 Wagtail 기본 문서 업로드 상한만 설정).
+# Maximum upload size for documents in bytes (03 §5.5).
 WAGTAILDOCS_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+
+# 커스텀 이미지 모델 (WU-03, REQ-006, 03 §3.2 CustomImage/CustomRendition, DEC-008).
+WAGTAILIMAGES_IMAGE_MODEL = "custom_images.CustomImage"
+
+# 이미지 업로드 검증 (REQ-006, 03 §5.5의 "임의 파일 업로드 방지" 원칙을 이미지
+# 업로드 경로에도 동일하게 적용). 아래 값은 Wagtail 기본값과 동일하지만, 보안
+# 의도(허용 확장자를 화이트리스트로 명시, 특히 XSS 위험이 있는 svg를 허용
+# 목록에서 제외)를 코드에 명시적으로 남기기 위해 값을 그대로 선언한다 —
+# WAGTAILDOCS_* 설정과 동일한 패턴(위 §180 참고).
+WAGTAILIMAGES_EXTENSIONS = ["avif", "gif", "jpg", "jpeg", "png", "webp"]
+WAGTAILIMAGES_MAX_UPLOAD_SIZE = 10 * 1024 * 1024  # 10MB
+WAGTAILIMAGES_MAX_IMAGE_PIXELS = 128 * 1000000  # 디컴프레션 폭탄(초대형 픽셀) 방지

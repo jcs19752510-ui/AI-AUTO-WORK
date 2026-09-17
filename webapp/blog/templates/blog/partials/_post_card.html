@@ -1,0 +1,33 @@
+{% load wagtailimages_tags %}
+<article class="post-card">
+  {% if post.featured_image %}
+  {% image post.featured_image width-400 as img_400 %}
+  {% image post.featured_image width-800 as img_800 %}
+  <a class="post-card__image-link" href="{% url 'blog:post_detail' post.slug %}" tabindex="-1" aria-hidden="true">
+    <img
+      class="post-card__image"
+      src="{{ img_400.url }}"
+      srcset="{{ img_400.url }} 400w, {{ img_800.url }} 800w"
+      sizes="(max-width: 768px) 100vw, 33vw"
+      width="{{ img_400.width }}"
+      height="{{ img_400.height }}"
+      alt=""
+      loading="lazy"
+    >
+  </a>
+  {% else %}
+  <div class="post-card__image-placeholder" aria-hidden="true">
+    <svg viewBox="0 0 24 24" width="40" height="40" focusable="false">
+      <rect x="1" y="1" width="22" height="22" rx="2" fill="none" stroke="currentColor" stroke-width="1.5"/>
+      <circle cx="8" cy="8" r="2" fill="currentColor"/>
+      <path d="M2 18l6-6 4 4 5-5 5 5" fill="none" stroke="currentColor" stroke-width="1.5"/>
+    </svg>
+  </div>
+  {% endif %}
+  <div class="post-card__body">
+    <a class="category-badge" href="{% url 'blog:category_list' post.category.slug %}">{{ post.category.name }}</a>
+    <h2 class="post-card__title"><a href="{% url 'blog:post_detail' post.slug %}">{{ post.title }}</a></h2>
+    {% if post.intro %}<p class="post-card__intro">{{ post.intro }}</p>{% endif %}
+    <time class="post-card__date" datetime="{{ post.first_published_at|date:'c' }}">{{ post.first_published_at|date:"Y.n.j" }}</time>
+  </div>
+</article>

@@ -102,6 +102,35 @@ STORAGES["staticfiles"] = {  # noqa: F405
     "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
 }
 
+# 백업 전용 버킷(backup-private, 03 §2.3 버킷 분리/DEC-008, DEC-010 백업
+# 아키텍처) — media-public과 물리적으로 분리된 별도 버킷이므로, 버킷 정책
+# 실수 한 번으로 백업이 인터넷에 공개 노출되는 사고를 구조적으로 막는다.
+# 이번 WU(WU-03)는 STORAGES 별칭 골격만 구성한다: 실제 pg_dump 백업
+# 업로드/GitHub Actions 워크플로 구현은 WU-10 범위다. 버킷이 아직 발급되지
+# 않았을 수 있으므로(R2_BACKUP_BUCKET_NAME 미설정) default 스토리지처럼
+# _require_env로 기동을 막지 않는다 — 지금은 아무 코드도 이 별칭을 쓰지
+# 않기 때문에, 값이 없다고 기동을 실패시키는 것은 불필요한 운영 마찰이다.
+R2_BACKUP_BUCKET_NAME = os.environ.get("R2_BACKUP_BUCKET_NAME")
+if R2_BACKUP_BUCKET_NAME:
+    STORAGES["backup"] = {  # noqa: F405
+        "BACKEND": "storages.backends.s3.S3Storage",
+        "OPTIONS": {
+            "bucket_name": R2_BACKUP_BUCKET_NAME,
+            "endpoint_url": AWS_S3_ENDPOINT_URL,
+            "region_name": AWS_S3_REGION_NAME,
+            # 최소 권한 원칙: 백업 버킷 전용 자격증명이 별도로 발급되면 그
+            # 값을 쓴다. 아직 없으면(v1 시점) media-public용 자격증명을
+            # 임시로 재사용하되, WU-10 착수 시 버킷 범위가 분리된 별도
+            # R2 API 토큰 발급을 반드시 재검토할 것(단일 자격증명이 두
+            # 버킷 모두에 접근 가능하면 버킷 분리의 장애 격리 이점이
+            # 자격증명 유출 시나리오에서는 상쇄된다).
+            "access_key": os.environ.get("R2_BACKUP_ACCESS_KEY_ID") or AWS_ACCESS_KEY_ID,
+            "secret_key": os.environ.get("R2_BACKUP_SECRET_ACCESS_KEY") or AWS_SECRET_ACCESS_KEY,
+            "default_acl": None,
+            "querystring_auth": False,
+        },
+    }
+
 try:
     from .local import *  # noqa: F401,F403
 except ImportError:

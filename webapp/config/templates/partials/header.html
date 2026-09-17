@@ -1,0 +1,31 @@
+{% load wagtailcore_tags %}
+{% wagtail_site as current_site %}
+<div class="site-header">
+  <a class="site-header__logo" href="/">{% if current_site and current_site.site_name %}{{ current_site.site_name }}{% else %}블로그{% endif %}</a>
+  <nav class="site-nav" aria-label="주 메뉴">
+    <button type="button" class="site-nav__toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-menu">
+      <span class="sr-only">메뉴 열기</span>
+      <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true" focusable="false">
+        <path d="M3 6h18M3 12h18M3 18h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </button>
+    <ul class="site-nav__menu" id="nav-menu">
+      {% for category in nav_categories|slice:":6" %}
+      <li><a href="{% url 'blog:category_list' category.slug %}">{{ category.name }}</a></li>
+      {% endfor %}
+      {% if nav_categories|length > 6 %}
+      <li class="site-nav__more">
+        <details>
+          <summary>더보기</summary>
+          <ul>
+            {% for category in nav_categories|slice:"6:" %}
+            <li><a href="{% url 'blog:category_list' category.slug %}">{{ category.name }}</a></li>
+            {% endfor %}
+          </ul>
+        </details>
+      </li>
+      {% endif %}
+      <li><a class="site-nav__rss" href="{% url 'blog:feed' %}" aria-label="RSS 피드 구독">RSS</a></li>
+    </ul>
+  </nav>
+</div>
