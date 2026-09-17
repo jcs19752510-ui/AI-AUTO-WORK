@@ -131,6 +131,37 @@ if R2_BACKUP_BUCKET_NAME:
         },
     }
 
+# 장애 알림 채널 (WU-08, REQ-012, 03 §7.2) — Django 500 에러를 운영자
+# 이메일로 즉시 통지한다. `ADMINS`를 채우기만 하면 Django의 기본 LOGGING
+# 설정(django.utils.log.DEFAULT_LOGGING, 이 프로젝트가 LOGGING을 별도로
+# 오버라이드하지 않았으므로 그대로 적용됨)이 `django.request` 로거에 이미
+# `mail_admins`(AdminEmailHandler, DEBUG=False에서만 동작) 핸들러를 연결해
+# 두었다 — 여기서 커스텀 LOGGING dict를 새로 만들 필요가 없다(과설계 방지).
+# 실제 발송에 필요한 SMTP 값(EMAIL_HOST 등)은 운영자가 선택할 SMTP
+# 공급자에 맞춰 배포 시 채운다. DJANGO_ADMIN_EMAIL이 비어 있으면 ADMINS가
+# 빈 목록이 되어 알림이 조용히 발송되지 않을 뿐(예외로 기동을 막지 않음) —
+# R2/DATABASE_URL과 달리 이 기능은 앱 구동 자체의 필수 전제가 아니므로
+# `_require_env`를 쓰지 않는다. 이 값이 실제로 채워졌는지는 10단계
+# 배포테스트가 강제로 500 에러를 유발해 실측 확인해야 한다(03 §7.2).
+_admin_emails = [
+    email.strip()
+    for email in os.environ.get("DJANGO_ADMIN_EMAIL", "").split(",")
+    if email.strip()
+]
+ADMINS = [(email, email) for email in _admin_emails]
+MANAGERS = ADMINS
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = os.environ.get("EMAIL_HOST", "")
+EMAIL_PORT = int(os.environ.get("EMAIL_PORT", "587"))
+EMAIL_HOST_USER = os.environ.get("EMAIL_HOST_USER", "")
+EMAIL_HOST_PASSWORD = os.environ.get("EMAIL_HOST_PASSWORD", "")
+EMAIL_USE_TLS = os.environ.get("EMAIL_USE_TLS", "true").lower() == "true"
+SERVER_EMAIL = os.environ.get("SERVER_EMAIL") or (
+    f"errors@{RENDER_EXTERNAL_HOSTNAME}" if RENDER_EXTERNAL_HOSTNAME else "errors@localhost"
+)
+DEFAULT_FROM_EMAIL = SERVER_EMAIL
+
 try:
     from .local import *  # noqa: F401,F403
 except ImportError:

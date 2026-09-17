@@ -3,10 +3,6 @@
 # 커밋하지 않고 Render 대시보드 Environment Variables에서 직접 입력한다.
 # 실제 Neon/Cloudflare R2 자격증명이 아직 발급되지 않았으므로(WU-01 시점),
 # 이 파일은 골격이며 10~12단계(배포)에서 실제 값 입력 후 사용한다.
-#
-# healthCheckPath(/healthz)는 WU-08에서 core 앱에 헬스체크 라우트가
-# 구현된 뒤에 추가할 것 — 아직 라우트가 없는 상태로 지정하면 배포 헬스체크가
-# 항상 실패한다.
 
 services:
   - type: web
@@ -15,7 +11,19 @@ services:
     plan: free
     rootDir: webapp
     buildCommand: "./build.sh"
-    startCommand: "gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker"
+    # --workers 1을 명시적으로 고정한다(WU-08, DEC-026). gunicorn 기본값도
+    # 1이라 동작은 이전과 동일하지만, 이 값은 우연한 기본값이 아니라
+    # 의도된 결정이다 — LocMemCache 기반 뉴스레터 레이트리밋(DEC-024)과
+    # 이번 WU-08 사용량 카운터(core/monitoring.py)가 전부 "단일 프로세스"
+    # 전제 위에서만 정확하다. 워커를 늘리면 두 기능 모두 워커별로 값이
+    # 갈라진다 — 늘릴 필요가 생기면 그때 Redis 등 공유 저장소로 먼저
+    # 전환해야 한다(03 §6.2 "지금 단계에서 과설계 금지" 원칙과 동일하게,
+    # 지금은 반대로 "필요해지기 전까지 단일 워커 유지"가 과설계 방지다).
+    startCommand: "gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --workers 1"
+    # WU-08, REQ-011/012 — core 앱의 얕은 헬스체크(03 §4 `GET /healthz`,
+    # DB 접속 확인 없음). Render가 배포 후 이 경로가 200을 반환할 때까지
+    # 트래픽 전환을 대기한다.
+    healthCheckPath: /healthz
     envVars:
       - key: DJANGO_SETTINGS_MODULE
         value: config.settings.production
@@ -48,4 +56,32 @@ services:
       - key: R2_BACKUP_ACCESS_KEY_ID
         sync: false
       - key: R2_BACKUP_SECRET_ACCESS_KEY
+        sync: false
+      # 장애 알림(WU-08, REQ-012, 03 §7.2) — 500 에러 발생 시 운영자 이메일로
+      # 즉시 통지(Django ADMINS + 기본 AdminEmailHandler). 비워두면 알림이
+      # 조용히 발송되지 않을 뿐 배포를 막지 않는다(config/settings/production.py
+      # 참고). 쉼표로 여러 주소 구분 가능.
+      - key: DJANGO_ADMIN_EMAIL
+        sync: false
+      - key: EMAIL_HOST
+        sync: false
+      - key: EMAIL_PORT
+        value: "587"
+      - key: EMAIL_HOST_USER
+        sync: false
+      - key: EMAIL_HOST_PASSWORD
+        sync: false
+      - key: EMAIL_USE_TLS
+        value: "true"
+      - key: SERVER_EMAIL
+        sync: false
+      # 최초 슈퍼유저 부트스트랩(WU-09, REQ-010, build.sh의 ensure_superuser).
+      # 최초 배포 성공 후에는 세 값 모두 대시보드에서 지워도 된다(권장,
+      # webapp/ADMIN_ACCESS_GUIDE.md 참고) — 지운다고 이미 생성된 계정에는
+      # 영향이 없다(멱등 커맨드가 슈퍼유저 존재 시 건너뛰기 때문).
+      - key: DJANGO_SUPERUSER_USERNAME
+        sync: false
+      - key: DJANGO_SUPERUSER_EMAIL
+        sync: false
+      - key: DJANGO_SUPERUSER_PASSWORD
         sync: false

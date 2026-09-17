@@ -53,6 +53,12 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    # WU-08, REQ-012 — 요청량/응답시간 경량 집계(core/monitoring.py). 응답
+    # 시간을 최대한 온전히 재는 것이 목적이므로 맨 앞(다른 미들웨어를 전부
+    # 감싸는 위치)에 둔다. production.py가 XForwardedForMiddleware를 이
+    # 리스트 맨 앞에 다시 prepend하므로, 최종 실행 순서는 XFF(요청 IP 정규화,
+    # 거의 즉시 끝남) -> RequestMetrics(그 이후 전체) 순이 된다.
+    "core.middleware.RequestMetricsMiddleware",
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
