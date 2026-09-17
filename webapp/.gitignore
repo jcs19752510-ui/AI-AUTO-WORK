@@ -1,3 +1,6 @@
+# 규칙 K — 검증/테스트용 임시 아티팩트 전용 디렉터리 (venv/임시 DB/임시 설정 전부 이 하위에만 생성)
+.harness-tmp/
+
 # Python
 __pycache__/
 *.pyc
