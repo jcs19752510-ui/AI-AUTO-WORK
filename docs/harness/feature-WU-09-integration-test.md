@@ -217,3 +217,178 @@ flowchart TD
     L --> M["traceability.md 갱신(10)"]
     M --> N["WU-09(5->6->7) 완료, WU-10/11은 별도 범위"]
 ```
+
+---
+
+## 재작업 라운드 2 (DEF-09-01 해소) 재검증
+
+> **재검증 경위**: 09단계 보안검증(`09-security-audit.md`, FAIL)이 `/django-admin/login/`에 무차별대입 방어가 전혀 없음(DEF-09-01, High)을 실측 재현했다. 3단계(`03-system-design.md` v1.3, DEC-040)가 "두 진입점 모두 방어(카운터 공유)" 옵션을 채택했고, 5단계(WU-09 재작업 라운드 2, `unit-09-note.md` "재작업 라운드 2" 절, DEC-041)가 `RateLimitedAdminLoginView`를 구현했다고 주장했으며, 6단계(`unit-09-test.md` "재작업 라운드 2 재검증" 절)가 신규 venv 2개로 이를 독립 재현해 PASS로 확정했다(AC23~30 8/8 + 원본 AC1~22 회귀 22/22). **이 절은 6단계의 PASS 판정을 그대로 신뢰하지 않고, 7단계가 WU-01(`XForwardedForMiddleware`)+WU-08(`RequestMetricsMiddleware`/사용량 대시보드)이 이미 조립된 `webapp/` 전체 위에서, 그리고 이번 라운드가 처음으로 다루는 §5.6 개인정보 파기절차 E2E까지 포함해 처음부터 독립 재현한 결과다.** 원본 §1~10(IT-F01~F24, 회귀 기준선)은 그대로 보존했으며, 이번 절은 그 아래에 append한 것이다.
+
+### R2-1. 개요
+
+- 테스트 대상: `webapp/core/admin_auth.py`의 `RateLimitedAdminLoginView`(신규, DEC-041), `webapp/config/urls.py`의 `django-admin/login/` 오버라이드(신규), `webapp/ADMIN_ACCESS_GUIDE.md` §1/§4 갱신(신규) — 이를 **WU-01(XForwardedForMiddleware/production 보안설정)+WU-02~07+WU-08(RequestMetricsMiddleware/사용량 대시보드)이 이미 조립된 `webapp/` 전체** 위에 실제로 결합한 형태.
+- 테스트 유형: 통합(Integration) — 업무 단위(WU-09) 규칙F 재작업 라운드 2, 7단계(`07-integration-tester`) 재호출.
+- 테스트 목적: 오케스트레이터 지시가 명시한 4가지 중점 사항을 검증한다.
+  1. WU-01(`XForwardedForMiddleware`), WU-08(`RequestMetrics`/모니터링 대시보드)과 새 `/django-admin/login/` 라우팅이 공존하며 회귀가 없는지.
+  2. `/django-admin/`이 실제로 쓰이는 유일한 용도(§5.6 개인정보 파기절차, `NewsletterSubscriberAdmin` 하드삭제, WU-07 소유)가 새 레이트리밋 뷰 아래에서도 정상 동작하는지(운영자가 정상 로그인 후 실제로 구독자 삭제까지 가능한지 E2E) — **원본 07단계(§1~10)도, 6단계 재작업 라운드 2도 이 E2E 경로를 검증한 적이 없다(신규 관점).**
+  3. 8단계가 검증했던 전체 시스템 기동(collectstatic/migrate/check)이 이번 변경 이후에도 깨지지 않는지.
+  4. 9단계의 원래 재현 시나리오(DEF-09-01)가 전체 스택 조립 상태(production 유사 설정)에서도 확실히 막히는지 최종 재현.
+- 관련 산출물:
+  - `docs/harness/decisions.md` DEC-039(9단계 발견/재작업 트리거)·DEC-040(3단계 재작업 채택안)·DEC-041(5단계 구현 세부 판단)
+  - `docs/harness/03-system-design.md` §5.1(v1.3) — 관리자 진입점 인벤토리/구현 지침 1~5
+  - `docs/harness/units/unit-09-note.md` "재작업 라운드 2" 절(R2-1~R2-7, 5단계 산출물)
+  - `docs/harness/units/unit-09-test.md` "재작업 라운드 2 재검증" 절(6단계, PASS — AC23~30 8/8 + 원본 22/22 회귀, 신규 결함 0건)
+  - `docs/harness/units/verify-log_unit-09-test.md` "재작업 라운드 2" 절(6단계 내부검증 2회 PASS)
+  - 기존 `docs/harness/feature-WU-09-integration-test.md` §1~10(원본 7단계 PASS — 회귀 기준선, IT-F01~F24)
+  - `docs/harness/08-full-system-test.md`, `docs/harness/09-security-audit.md`(FAIL 판정 원본, DEF-09-01 재현 절차)
+  - `webapp/core/admin_auth.py`, `webapp/config/urls.py`, `webapp/subscribers/admin.py`(§5.6 파기절차 구현)
+- 테스트 수행자(에이전트): `07-integration-tester`(규칙F 재작업 라운드 2 재호출)
+- 테스트 일시: 2026-09-17
+
+### R2-2. 테스트 범위 및 제외 범위
+
+- **범위(In-Scope)**:
+  1. 신규 venv 2개(`webapp/.harness-tmp/venv_wu09_r2_feat_it`, `webapp/.harness-tmp/venv_wu09_r2_feat_it2`)로 처음부터 독립 재현 — 5/6단계 주장을 그대로 신뢰하지 않는다(기존 원칙 계승).
+  2. **DEF-09-01 재현 시나리오를 전체 스택 조립 상태(production 유사 HTTPS 강제 설정)에서 최종 재확인**: `/django-admin/login/` 동일 IP 11회 연속 POST.
+  3. **WU-01 XFF × WU-08 모니터링 미들웨어 × 신규 `/django-admin/login/` 3중 공존**: 미들웨어 순서 실측, 429 포함 전체 로그인 시도가 모니터링 카운터에 누락 없이 집계되는지.
+  4. **§5.6 개인정보 파기절차 E2E(신규 관점, 원본 07단계/6단계 라운드 2 어디에도 없던 검증)**: 운영자가 `/django-admin/login/`으로 실제 로그인 → 구독자 목록 조회 → 실제 하드 삭제 실행까지 왕복.
+  5. **원본 IT-F11/F13~F15(XFF rightmost 판정, CSRF-무효 트래픽 경계 DEC-031)이 `/cms-admin/login/`에서만 확인했던 것을 신규 라우트 `/django-admin/login/`에서도 동일하게 성립하는지** — 원본 07단계도, 5/6단계 라운드 2도 이 조합을 다루지 않았다(신규 관점).
+  6. 전체 시스템 기동(dev/production 유사 양쪽 `check`/`migrate`/`collectstatic`) 회귀 확인.
+  7. 전체 자동화 테스트 스위트(35개) 회귀 확인(2개 독립 venv 각 1회, 총 2회).
+  8. robots.txt(WU-05)/healthz(WU-08)/`render.yaml --workers 1`(DEC-026) 회귀 확인.
+  9. `docs/harness/traceability.md` REQ-010 "통합테스트" 컬럼 갱신.
+  10. 검증에 사용한 venv/DB/staticfiles/임시 설정 모듈 정리(규칙K).
+- **제외 범위(Out-of-Scope) 및 사유**:
+  1. 원본 §1~10(IT-F01~F24)이 이미 PASS로 확정한 항목 중 이번 라운드가 코드를 건드리지 않은 부분(Category 권한 마이그레이션 순서, `ensure_superuser`/`build.sh` 멱등성, Editors 그룹 실제 로그인 세션)의 반복 재검증 — 6단계 재작업 라운드 2가 이미 회귀 없음을 확인했고(`unit-09-test.md` TC-R2-002~021), 이번 라운드가 건드린 파일(`core/admin_auth.py`/`config/urls.py`/`ADMIN_ACCESS_GUIDE.md`)과 상호작용 가능성이 없다(규칙B, 반복 방지). 단, 전체 자동화 테스트 스위트 재실행으로 포괄적 회귀 확인은 유지한다(§R2-2-7).
+  2. 실제 브라우저 E2E, 실제 Render 배포, 다중 워커 — 원본 §2와 동일 사유(MCP 미연동, Windows 로컬 제약, DEC-026 전제 유지).
+  3. 15분/10회 임계값의 실제 운영 적정성 — 기존 이월 유지.
+
+### R2-3. 테스트 환경
+
+- 실행 환경: Windows 10 Pro 10.0.19045, Python 3.12.10. `webapp/requirements.txt`를 완전히 새로운 venv 2개(`webapp/.harness-tmp/venv_wu09_r2_feat_it`, `webapp/.harness-tmp/venv_wu09_r2_feat_it2`, 검증 후 삭제)에 각각 clean install — 규칙K에 따라 전부 `webapp/.harness-tmp/` 하위에만 생성했다(원본 07단계가 `webapp/.venv_wu09_feat_it`를 저장소 루트 바로 아래 만들었던 것과 달리, DEC-035(규칙K 신설) 이후 확립된 경로 규칙을 그대로 따름).
+- **dev 설정**(`config.settings.dev`, SQLite): `check`/`makemigrations --check`/`migrate`/전체 자동화 테스트 스위트(35개, 2개 venv에서 각 1회씩 독립 실행)에 사용.
+- **production 유사 설정**(신규 생성, 검증 후 삭제): `webapp/.harness-tmp/prodlike_r2_feat_it.py`/`prodlike_r2_feat_it2.py` — `production.py`를 그대로 상속하고 `DATABASES`만 `.harness-tmp/` 하위 SQLite로 재정의. `PYTHONPATH`에 `.harness-tmp`를 추가해 모듈로 임포트. 더미 필수 환경변수(`SECRET_KEY`/`DJANGO_ALLOWED_HOSTS`/`RENDER_EXTERNAL_HOSTNAME`/`DATABASE_URL`/`R2_*`/`DJANGO_ADMIN_EMAIL`/`DJANGO_SUPERUSER_*`) 전체로 `SECURE_PROXY_SSL_HEADER`/`SECURE_SSL_REDIRECT`/`SESSION_COOKIE_SECURE`/`CSRF_COOKIE_SECURE`/HSTS/`XForwardedForMiddleware`가 전부 켜진 상태를 재현했다.
+- **Render 실제 트래픽 재현 방법**: 원본 07단계와 동일하게 `HTTP_X_FORWARDED_PROTO="https"`를 명시적으로 실어 보내고, `HTTP_HOST`를 `DJANGO_ALLOWED_HOSTS`와 일치시켰다. XFF rightmost 판정 시나리오(§R2-4-4)는 `HTTP_X_FORWARDED_FOR="<leftmost>, <rightmost>"` 형태로 매 요청마다 leftmost만 바꾸고 rightmost(Render 엣지가 실제로 추가하는 값)를 고정했다. CSRF 경계 시나리오(§R2-4-4)는 `Client(enforce_csrf_checks=True)` + 유효 CSRF 토큰 + same-domain `Referer` 헤더로 실제 브라우저의 same-origin 폼 제출을 재현했다(원본 07단계 §4-7이 규명한 `is_secure()==True` 시 `Referer` 강제 요구사항을 그대로 반영).
+- 테스트 데이터: `legal/migrations/0002_create_legal_pages.py`가 만드는 기본 `HomePage`/`Site`/법적 페이지를 재사용하고, `ensure_superuser`로 슈퍼유저 1개를 부트스트랩했다. §5.6 E2E(§R2-4-3)를 위해 `NewsletterSubscriber` 레코드 1개를 직접 생성해 삭제 대상으로 사용했다.
+- 전제 조건: 레이트리밋(WU-09)/모니터링(WU-08) 캐시가 동일 프로세스 `LocMemCache`(`default`)를 공유하므로 각 시나리오 시작 전 `cache.clear()`로 통제했다. 원본 §3이 이미 확인한 캐시 키 네임스페이스 비충돌(`core:admin_login:ratelimit:*` vs `core:usage:daily:*`)은 이번 라운드도 코드 미변경이라 재확인하지 않았다(규칙B).
+- 검증에 사용한 venv 2개, SQLite DB(`db.sqlite3`, `db_prodlike_r2_feat_it.sqlite3`, `db_prodlike_r2_feat_it2.sqlite3`), 임시 설정 모듈(`prodlike_r2_feat_it.py`/`prodlike_r2_feat_it2.py`), 임시 검증 스크립트(`it_r2_scenarios.py`/`it_r2_e2e_delete.py`/`it_r2_csrf_xff.py`/`it_r2_regress.py`), `staticfiles/`, `__pycache__` 전부는 검증 완료 후 삭제했다(§R2-8 Teardown 근거).
+
+### R2-4. 테스트 케이스 및 결과
+
+#### R2-4-1. 전체 시스템 기동 회귀(신규 venv, 빈 DB, dev+production 유사 양쪽)
+
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| IT-R2-M01 | dev 설정 check/makemigrations/migrate | `manage.py check` -> `makemigrations --check --dry-run` -> `migrate --noinput` | 오류 없음, "No changes detected" | "System check identified no issues (0 silenced)." / "No changes detected" / 전체 마이그레이션(`core.0001_setup_editor_permissions` 포함) 오류 없이 적용 | PASS | venv1 |
+| IT-R2-M02 | 전체 자동화 테스트 스위트(venv1) | `manage.py test`(dev) | 35개 전부 OK | "Ran 35 tests in 66.369s ... OK" | PASS | 라운드 1(29개)+라운드 2 신규 6개=35개, 6단계 TC-R2-005/029(35/35)와 정확히 동일 수치 |
+| IT-R2-M03 | production 유사 check/migrate/collectstatic/ensure_superuser | `prodlike_r2_feat_it.py`, 더미 env 전체 | 전부 오류 없음, "218 static files ... 638 post-processed" | "System check identified no issues (0 silenced)." / 전체 마이그레이션 적용 성공 / "218 static files copied to ... 638 post-processed."(원본 07단계 §4-1, 6단계 라운드 2 §R2-3-10과 정확히 동일 수치 — 이번 라운드가 정적자산을 추가하지 않았음을 재확인) / `ensure_superuser` "슈퍼유저 'r2feat-admin' 계정을 생성했습니다." | PASS | venv1, IT-R2-E2E(§R2-4-3)의 로그인 대상 계정이 여기서 생성됨 |
+| IT-R2-M04 | 전체 자동화 테스트 스위트(venv2, 독립 재확인) | `manage.py test`(dev), venv2 | 35개 전부 OK | "Ran 35 tests in 66.277s ... OK" | PASS | IT-R2-M02와 완전히 독립된 2번째 venv/실행 — 최소 2회 검증 요건(규칙B) 충족 |
+
+#### R2-4-2. WU-01(XFF) x WU-08(모니터링) x 신규 `/django-admin/login/` 3중 공존, DEF-09-01 최종 재현
+
+| ID | 시나리오 | 사전조건 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|----------|-----------|-----------|-----------|-----------|------|
+| IT-R2-01 | prod-like `MIDDLEWARE` 순서 실측(WU-01 XFF가 WU-08 모니터링보다 먼저, 이번 라운드가 리스트를 건드리지 않았는지) | prod-like 설정 로드 | `settings.MIDDLEWARE[:2]` 조회 | `["config.middleware.XForwardedForMiddleware", "core.middleware.RequestMetricsMiddleware"]` | 정확히 일치 | PASS | 원본 IT-F01과 동일 전제 재확인 — 라운드 2가 `config/urls.py`에 라우트 1줄만 추가했을 뿐 `MIDDLEWARE`는 미변경 |
+| IT-R2-02 | `reverse("admin_login")`/`reverse("admin:login")`/`reverse("wagtailadmin_login")` URL 이름 무결성 | prod-like 설정 로드 | 독립 스크립트로 3개 이름 각각 `reverse()` | `admin_login`·`admin:login` 둘 다 `/django-admin/login/`, `wagtailadmin_login`은 `/cms-admin/login/` | `admin:login -> /django-admin/login/`, `admin_login -> /django-admin/login/`, `wagtailadmin_login -> /cms-admin/login/` | PASS | 6단계 TC-R2-024와 동일 결론을 7단계가 전체 스택 조립 상태에서 독립 재확인 |
+| IT-R2-03 | **DEF-09-01 재현 절차 그대로 — production 유사 HTTPS 강제 설정, `/django-admin/login/` 동일 IP 11회 연속 POST** | prod-like, `cache.clear()`, `Client(enforce_csrf_checks=False)` | 신선한 Client, 동일 `REMOTE_ADDR`·`HTTP_X_FORWARDED_PROTO=https`·`HTTP_HOST`(ALLOWED_HOSTS 일치)로 틀린 비밀번호 POST 11회 | 1~10회 `!=429`(200), 11번째 `429` | `[200,200,200,200,200,200,200,200,200,200,429]` | PASS | **09단계가 재작업 전 재현했던 `[200x11]`(무제한)과 명확히 대조** — 전체 스택(WU-01~08 조립 + production 유사 HTTPS 강제 설정)에서 DEF-09-01이 최종적으로 차단됨을 확인 |
+| IT-R2-04 | 429 포함 전체 로그인 요청이 WU-08 모니터링 카운터에 누락 없이 집계(prod-like) | `cache.clear()`, 동일 IP로 11회 연속 POST(마지막 429) | 전후 `get_usage_snapshot()` 비교 | 델타 정확히 11 | `before.total_requests=11`(직전 IT-R2-03의 11건이 이미 누적), `after.total_requests=22`, 델타=11 | PASS | 원본 IT-F12(WU-08 결합, 델타 12=GET1+POST11)와 동일 원리 — 이번 라운드는 신규 `/django-admin/login/` 경로에서도 429를 포함한 전체 요청이 예외 없이 집계됨을 재확인 |
+
+#### R2-4-3. §5.6 개인정보 파기절차 E2E — 운영자 로그인부터 실제 하드 삭제까지 (신규 관점, 원본/6단계 모두 미검증)
+
+> **배경**: 03 §5.1(v1.3)이 `/django-admin/`을 라우트 제거 대상에서 제외한 유일한 근거는 §5.6 파기절차(`NewsletterSubscriberAdmin` 하드삭제)의 유일한 실행 경로라는 사실이다(DEC-040). 그런데 원본 07단계(§1~10)도, 6단계 재작업 라운드 2(`unit-09-test.md`)도 이 삭제 경로 자체를 실제 HTTP 세션으로 실행해 본 적이 없다 — 둘 다 로그인/레이트리밋/권한까지만 검증했다. 이번 라운드가 이 공백을 처음으로 메운다.
+
+| ID | 시나리오 | 사전조건 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|----------|-----------|-----------|-----------|-----------|------|
+| IT-R2-E2E-1 | 로그인 폼 GET | prod-like, 신규 `NewsletterSubscriber` 1건 생성 | `GET /django-admin/login/` | 200 | `status=200` | PASS | |
+| IT-R2-E2E-2 | 새 `RateLimitedAdminLoginView`로 실제 로그인 성공 | 위 상태, `cache.clear()` | 올바른 자격증명으로 POST | 302 | `status=302, Location=/accounts/profile/` | PASS | `Location`이 Django 기본값인 것은 `?next=` 미지정 시 표준 동작(원본 07단계 IT-F09 비고와 동일 원리, 새 결함 아님) |
+| IT-R2-E2E-3 | 구독자 목록 화면 접근 | 위 로그인 세션 유지 | `GET /django-admin/subscribers/newslettersubscriber/` | 200, 대상 이메일 노출 | `status=200`, `e2e-delete-target@example.test` 포함 확인 | PASS | |
+| IT-R2-E2E-4 | **실제 하드 삭제 실행(확인 화면 -> 실행)** | 위 상태 | `POST .../` `action=delete_selected` -> 확인 페이지(200) -> 동일 액션 + `post=yes` 재POST | 확인 페이지 200, 실행 후 302, DB에서 레코드 실제 제거 | 확인 페이지 `status=200`, 실행 `status=302, Location=/django-admin/subscribers/newslettersubscriber/`, 삭제 후 `NewsletterSubscriber.objects.filter(id=...).exists() == False` | PASS | §5.6이 명시한 "status 토글이 아니라 실제 행 삭제"가 신규 레이트리밋 뷰 아래에서도 정확히 동작함을 최초로 실증 — `has_add_permission`/`has_change_permission=False`이지만 삭제는 허용됨(`subscribers/admin.py`가 `has_delete_permission`을 오버라이드하지 않아 기본값 True 유지)도 함께 확인 |
+
+#### R2-4-4. XFF rightmost 판정 x CSRF-레이트리밋 경계(DEC-031) — 신규 라우트 `/django-admin/login/`에서 재확인 (신규 결합, 원본 07단계는 `/cms-admin/login/`만 검증)
+
+| ID | 시나리오 | 사전조건 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|----------|-----------|-----------|-----------|-----------|------|
+| IT-R2-05 | XFF rightmost 고정 + leftmost 매번 변경, 유효 CSRF + `Referer` 통과 상태로 `/django-admin/login/`에 11회 POST | prod-like(venv2), `cache.clear()`, `Client(enforce_csrf_checks=True)` | rightmost IP 고정, leftmost는 매 요청 변경, CSRF 토큰+same-domain Referer 포함 | 1~10회 `!=429`, 11번째 `429` | `[200,200,200,200,200,200,200,200,200,200,429]` | PASS | 원본 IT-F11(`/cms-admin/login/`)과 동일 로직이 신규 라우트에서도 그대로 성립함을 처음 확인 — `RateLimitedAdminLoginView`가 `RateLimitedLoginView`와 동일하게 `REMOTE_ADDR`(XFF 미들웨어가 이미 정규화)을 그대로 신뢰하기 때문 |
+| IT-R2-06 | CSRF-무효 트래픽이 신규 라우트에서도 레이트리밋을 우회하지만 예산을 선점하지 않는지(DEC-031 경계 재확인) | `cache.clear()`, CSRF 토큰 없이 POST 12회 -> 이후 유효 CSRF로 11회 | 무효 12회 전부 403(429 없음, 캐시 키 `None`) -> 유효 전환 시 새 10회 예산(11번째 429) | 무효: `[403x12]`, 캐시 키 `None`. 유효 전환 후: `[200x10, 429]` | PASS | 원본 IT-F13~F15(`/cms-admin/login/`)와 동일 경계가 신규 라우트에서도 동일하게 성립 — CSRF-무효 트래픽이 두 로그인 화면 어느 쪽에서도 자격증명 추측 수단이 되지 못함을 재확인 |
+
+#### R2-4-5. 회귀 확인 — robots.txt(WU-05)/healthz(WU-08)/render.yaml(DEC-026)
+
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| IT-R2-07 | robots.txt가 `/cms-admin/` 전체를 Disallow(신규 `/django-admin/login/` 라우트와 무관) | `GET /robots.txt`(prod-like, venv2) | 200, `Disallow: /cms-admin/` 포함 | `status=200`, 포함 확인 | PASS | 이번 라운드는 `/cms-admin/`을 건드리지 않음 |
+| IT-R2-08 | `/healthz`(WU-08)가 라운드 2 라우팅 변경과 무관하게 인증 없이 200 | `GET /healthz`(prod-like, venv2) | 200 | `status=200` | PASS | |
+| IT-R2-09 | `render.yaml` `--workers 1`(DEC-026) 유지 | 저장소 소스 문자열 확인 | `startCommand`에 `--workers 1` 포함 | `startCommand: "gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --workers 1"` 확인 | PASS | 이번 라운드는 `render.yaml`을 건드리지 않음 — 정적 대조로 회귀 없음 확인 |
+
+### R2-5. 커버리지
+
+- 오케스트레이터 지시 4가지 중점 사항 100% 커버:
+  1. WU-01(XFF)+WU-08(모니터링) x 신규 라우팅 공존 — §R2-4-1(IT-R2-M03)/§R2-4-2(IT-R2-01/02/03/04).
+  2. §5.6 파기절차(`/django-admin/` 유일 실사용처) E2E — §R2-4-3(IT-R2-E2E-1~4), 신규 100% 커버(원본/6단계 미검증 공백 해소).
+  3. 전체 시스템 기동(collectstatic/migrate/check) 회귀 — §R2-4-1(IT-R2-M01/M03).
+  4. DEF-09-01 원래 재현 시나리오의 전체 스택 조립 상태 최종 재현 — §R2-4-2(IT-R2-03).
+- 부가 커버리지(원본 07단계도 다루지 않았던 신규 결합): XFF rightmost x CSRF 경계(DEC-031)를 신규 라우트에서 재확인(§R2-4-4).
+- 전체 자동화 테스트 스위트 35개를 완전히 독립된 venv 2개에서 각 1회씩(총 2회) 실행해 회귀 없음을 확인(§R2-4-1 IT-R2-M02/M04) — 규칙B(최소 2회 검증) 충족.
+- 커버되지 않은 부분과 사유: 실제 브라우저 E2E, 실제 Render 배포 — §R2-2 제외범위와 동일 사유, 신규 아님.
+
+### R2-6. 결함(Defect) 목록
+
+| ID | 설명 | 재현 절차 | 심각도 | 상태 | 조치 내용 |
+|----|------|-----------|--------|------|-----------|
+| (없음) | 이번 재작업 라운드 2 통합 재검증에서 신규 결함을 발견하지 못했다. | - | - | - | - |
+
+- Critical/High/Medium/Low 결함 0건. §R2-4-1~R2-4-5 전 항목 PASS.
+- DEF-09-01(High)이 전체 스택 조립 상태(production 유사 HTTPS 강제 설정, WU-01/WU-08 결합)에서 최종적으로 Fixed로 확인되었다(IT-R2-03).
+
+### R2-7. 리스크 및 잔존 이슈
+
+- **(승계, 상태 변화 없음)** LocMemCache 단일 프로세스 전제(DEC-026 `--workers 1`)는 이번 라운드로도 변경되지 않았다 — `RateLimitedAdminLoginView`가 공유하는 카운터도 여전히 이 전제 위에서만 정확하다.
+- **(승계, 상태 변화 없음)** CSRF-무효 트래픽이 레이트리밋을 우회하는 경계(DEC-031)는 신규 라우트에서도 결함이 아님이 재확인됐다(§R2-4-4) — 원본 07단계 §7이 9단계에 이미 이월한 "일반 DoS 관점 재검토" 권고에 신규 라우트 실측 근거를 추가한다.
+- **9단계(보안검증) 재검증 필요**: DEC-039가 정한 재검증 체인(5->6->7->9) 중 이번 7단계까지 완료했다. `09-security-audit.md` §6 SEC-02와 동일한 방법으로 9단계가 독립적으로 DEF-09-01의 Fixed 전환을 최종 확정해야 한다(규칙F 체인 요구사항 — 6/7단계의 확인이 9단계 재검증을 대체하지 않는다).
+- 후속 조치가 필요한 항목: 없음(신규 결함 0건).
+
+### R2-8. Teardown(규칙K)
+
+- 검증에 사용한 `webapp/.harness-tmp/venv_wu09_r2_feat_it/`, `webapp/.harness-tmp/venv_wu09_r2_feat_it2/`, `webapp/.harness-tmp/prodlike_r2_feat_it.py`, `webapp/.harness-tmp/prodlike_r2_feat_it2.py`, `webapp/.harness-tmp/db_prodlike_r2_feat_it.sqlite3`, `webapp/.harness-tmp/db_prodlike_r2_feat_it2.sqlite3`, `webapp/.harness-tmp/it_r2_scenarios.py`, `webapp/.harness-tmp/it_r2_e2e_delete.py`, `webapp/.harness-tmp/it_r2_csrf_xff.py`, `webapp/.harness-tmp/it_r2_regress.py`, `webapp/staticfiles/`, `webapp/db.sqlite3`, 모든 `__pycache__` 전부 삭제 확인.
+- `git status --porcelain`(저장소 루트) 결과가 이번 7단계 재검증 세션 시작 시점의 스냅샷과 정확히 동일함을 확인: 수정 파일(`docs/harness/03-system-design.md`/`decisions.md`/`feature-WU-10-integration-test.md`/`traceability.md`(이번 세션이 REQ-010 행을 갱신)/`units/unit-09-note.md`/`units/unit-09-test.md`/`units/verify-log_unit-09-test.md`/`verify-log_03-system-design.md`/`webapp/ADMIN_ACCESS_GUIDE.md`/`webapp/config/urls.py`/`webapp/core/admin_auth.py`/`webapp/core/tests.py`), 신규 파일(`docs/harness/08-full-system-test.md`/`09-security-audit.md`/`verify-log_08-full-system-test.md`/`verify-log_09-security-audit.md`/`verify-log_feature-WU-10-integration-test.md`) — `traceability.md`/`feature-WU-09-integration-test.md`/`verify-log_feature-WU-09-integration-test.md` 3개는 이번 7단계 세션이 직접 갱신한 산출물이고, 나머지는 전부 이번 세션 시작 이전부터 존재하던 다른 단계의 미커밋 산출물이며 이번 세션이 만들거나 건드리지 않았다.
+- `bash automation/harness-janitor.sh --check` 실행 결과: "`.harness-tmp/`는 비어있거나 없습니다 — 이상 없음", "잔여 임시 아티팩트 없음 — 다음 단계 진행 가능."
+- **PASS 처리 요건(규칙K) 충족**: 위 Teardown이 전부 완료·확인되었다.
+
+### R2-9. 결론 및 판정
+
+- [x] **PASS** — 9단계(보안검증) 재검증으로 handoff 가능
+- [ ] CONDITIONAL PASS — 조건:
+- [ ] FAIL — 사유 및 재작업 요청 사항:
+
+**판정 근거**:
+1. DEF-09-01 재현 시나리오(`/django-admin/login/` 동일 IP 11회 연속 POST)가 WU-01(XFF)+WU-08(모니터링)이 전부 조립되고 production 유사 HTTPS 강제 설정까지 적용된 전체 스택 조립 상태에서 `[200x10, 429]`로 최종 차단됨을 확인했다(IT-R2-03) — 09단계가 재작업 전 재현했던 `[200x11]`과 명확히 대조되며, 6단계의 PASS 판정을 그대로 인용하지 않고 처음부터 독립 재현했다.
+2. WU-08 모니터링 미들웨어가 429 응답을 포함한 신규 라우트의 전체 로그인 시도를 누락 없이 집계함을 재확인했다(IT-R2-04).
+3. **§5.6 개인정보 파기절차(운영자 로그인 -> 구독자 목록 -> 실제 하드 삭제)가 신규 레이트리밋 뷰 아래에서도 실제로 동작함을 E2E로 최초 검증했다**(IT-R2-E2E-1~4) — 이는 DEC-040이 `/django-admin/` 라우트를 제거하지 않고 유지한 유일한 근거이며, 원본 07단계와 6단계 재작업 라운드 2 어느 쪽도 이 경로를 실제로 실행해 본 적이 없었다.
+4. 원본 07단계가 `/cms-admin/login/`에서만 확인했던 XFF rightmost 판정과 CSRF-레이트리밋 경계(DEC-031)가 신규 라우트 `/django-admin/login/`에서도 동일하게 성립함을 확인했다(IT-R2-05/06).
+5. 전체 시스템 기동(dev/production 유사 양쪽 check/migrate/collectstatic, 218 static files — 라운드 1과 동일 수치)이 이번 변경 이후에도 회귀 없이 동작함을 확인했다(IT-R2-M01/M03).
+6. 전체 자동화 테스트 스위트 35개가 완전히 독립된 venv 2개에서 각각 통과했다(IT-R2-M02/M04, 규칙B 최소 2회 검증 충족).
+7. robots.txt/healthz/render.yaml `--workers 1` 회귀 없음을 확인했다(IT-R2-07~09).
+8. 신규 Critical/High/Medium/Low 결함 0건.
+9. 검증에 사용한 venv 2개/DB/staticfiles/임시 설정 모듈/임시 스크립트를 전부 삭제해 `git status --porcelain`이 세션 시작 전 스냅샷과 완전히 동일함을 확인했다(§R2-8, 규칙K).
+10. `docs/harness/traceability.md`의 REQ-010 "통합테스트" 컬럼을 이번 판정 근거로 갱신했다.
+
+### R2-10. 내부 검증 (최소 2회)
+
+- **1차 검증(작성자 관점 자가 재검토)**: 오케스트레이터 지시 4가지 중점 사항이 §R2-4-1~R2-4-5에 전부 케이스로 매핑됐는지 §R2-5로 재확인 — 누락 없음. 특히 §5.6 E2E(2번 항목)가 원본/6단계 모두 다루지 않은 신규 검증임을 재확인하고, 실제 삭제 실행 후 DB 조회로 레코드 소멸을 직접 확인했는지(주장이 아니라 실측인지) 재검토 — `NewsletterSubscriber.objects.filter(id=...).exists() == False`로 실측 확인됨. 결함 0건.
+- **2차 검증("이 업무 단위가 다른 업무 단위와 만나는 지점(8단계)에서 문제가 생기지 않을까"를 의심하는 독립 심사자 관점)**: (a) 이번 라운드가 `webapp/subscribers/admin.py`를 전혀 수정하지 않았는데 삭제가 여전히 가능한 이유(`has_delete_permission` 미오버라이드 -> 기본값 True)가 문서에 명시됐는지 재확인 — IT-R2-E2E-4 비고에 명시됨. (b) IT-R2-04의 델타 계산(before=11, after=22, 델타=11)이 직전 IT-R2-03이 남긴 11건의 누적 위에서 계산된 것이라 오독의 소지가 있는지 재검토 — 비고에 "before는 IT-R2-03의 11건이 이미 누적"이라고 명시해 오독 위험을 제거했는지 확인, 명시되어 있음. (c) 8단계가 이번 라운드 이후 재실행될 때, 이번 라운드가 새로 검증한 §5.6 E2E 경로도 8단계 시나리오에 포함되어야 하는지 검토 — `08-full-system-test.md`는 이번 7단계 범위 밖이며, §R2-7에 9단계 재검증까지만 인계하고 8단계 재실행 여부는 오케스트레이터 판단 영역으로 남겼는지 재확인, 그렇게 되어 있음(임의로 8단계 범위를 확장하지 않음). (d) `git status --porcelain` 비교가 세션 시작 전 스냅샷과 정확히 일치하는지, `traceability.md` 자체 변경분이 "이번 세션이 만든 것"으로 정확히 구분되어 기록됐는지 재확인 — §R2-8에 명시됨. 결함 0건.
+- 검증 로그 파일 경로: `docs/harness/verify-log_feature-WU-09-integration-test.md`("재작업 라운드 2" 절, append)
+
+### 절차 흐름 (재검증 라운드, 참고용 다이어그램)
+
+```mermaid
+flowchart TD
+    A["DEC-039/040/041 + 03 5.1(v1.3) + unit-09-note/test 라운드2 입력"] --> B["신규 venv 2개로 처음부터 독립 재현(5/6단계 산출물 미신뢰)"]
+    B --> C["WU-01 XFF x WU-08 모니터링 x 신규 라우팅 3중 공존(R2-4-1/2)"]
+    C --> D["DEF-09-01 전체 스택 조립 상태 최종 재현(IT-R2-03)"]
+    D --> E["5.6 파기절차 E2E: 로그인->목록조회->실제 하드삭제(R2-4-3, 신규)"]
+    E --> F["XFF rightmost x CSRF 경계, 신규 라우트에서 재확인(R2-4-4)"]
+    F --> G["robots.txt/healthz/render.yaml 회귀(R2-4-5)"]
+    G --> H{신규 결함?}
+    H -->|없음| I["Teardown 확인(R2-8, 규칙K)"]
+    I --> J["내부검증 2회(R2-10)"]
+    J --> K["PASS(R2-9) -> traceability.md 갱신 -> 9단계 재검증 handoff"]
+```

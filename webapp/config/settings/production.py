@@ -67,6 +67,14 @@ DATABASES = {
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 SECURE_SSL_REDIRECT = True
+# Render의 헬스체크 프로브가 X-Forwarded-Proto 헤더 없이 인스턴스에 직접
+# 접속할 가능성이 있다(10단계 DEF-10-01, TC-004 실측). `/healthz`는
+# 민감정보 없는 "ok" 응답뿐이므로(03 §4, 내부용 분류) HTTPS 강제 리다이렉트
+# 예외로 두어도 보안 손실이 없고, Render의 실제 헤더 처리 방식과 무관하게
+# 최초 배포의 헬스체크가 항상 통과하도록 보장한다. `core/urls.py`의
+# `path("healthz", ...)`와 정확히 일치해야 한다(request.path.lstrip("/")
+# 기준으로 매칭됨).
+SECURE_REDIRECT_EXEMPT = [r"^healthz$"]
 SESSION_COOKIE_SECURE = True
 CSRF_COOKIE_SECURE = True
 # HSTS는 배포 후 HTTPS가 안정적으로 동작함을 확인한 뒤 값을 늘려간다(1주 -> 이후 1년).

@@ -184,3 +184,93 @@ docs/harness/traceability.md                 REQ-010 행 갱신
 ## 9. 다음 단계
 
 이 노트 작성 완료 후 **6단계(`06-unit-tester`) 호출을 트리거한다** — 위 §8의 1~22번 인수 조건을 입력으로 `docs/harness/units/unit-09-test.md`를 작성하도록 한다. 6단계가 PASS 판정하면, 02-planning.md §9 계획에 따라 이 업무 단위(WU-09)의 7단계(통합테스트, WU-01~08과의 조립 검증 포함) 착수 여부를 오케스트레이터가 판단한다. 이번 세션 범위는 WU-09까지이며 WU-10/11은 착수하지 않았다.
+
+---
+
+## 재작업 라운드 2 (DEF-09-01 해소, 규칙F 재작업)
+
+- 작성 에이전트: `05-unit-developer` (WU-09 타겟 재작업)
+- 트리거: `docs/harness/09-security-audit.md`(FAIL) SEC-02가 실측 재현한 **DEF-09-01(High)** — `/cms-admin/login/`(Wagtail)만 레이트리밋이 걸려 있고 `/django-admin/login/`(Django 기본 관리자, 동일 `auth_user` 슈퍼유저 계정 공유)은 방어가 전혀 없어 11회 연속 로그인 실패에도 200이 반복됨을 `django.test.Client`로 직접 확인.
+- 입력: `docs/harness/decisions.md` DEC-039(결함 발견/재작업 트리거)·DEC-040(3단계 재작업 채택안, 옵션2), `docs/harness/03-system-design.md` §5.1(v1.3, 구현 지침 1~5), `docs/harness/09-security-audit.md`(DEF-09-01 재현 절차), 기존 `webapp/core/admin_auth.py`/`webapp/config/urls.py`
+- 작성일: 2026-09-17
+
+### R2-1. 구현 범위
+
+03 §5.1(v1.3)의 구현 지침 1~4를 그대로 따랐다(문자 그대로 따를 수 있을 만큼 구체적이어서, 두 갈래로 해석이 갈리는 지점은 없었다):
+
+1. **`webapp/core/admin_auth.py`에 `RateLimitedAdminLoginView` 신설** — `django.views.View`를 상속(설계서 예시 그대로)하고, `dispatch()`에서 기존 `is_rate_limited(ip)`를 새로 만들지 않고 그대로 재사용해 POST가 임계값(IP당 15분/10회, DEC-029)을 넘으면 429를, 넘지 않으면 `django.contrib.admin.site.login(request, *args, **kwargs)`에 위임한다. `WagtailLoginView`를 상속하는 기존 `RateLimitedLoginView`와 달리, Django 기본 관리자 로그인은 상속할 뷰 클래스가 없다(`AdminSite.login()`은 바운드 메서드이며 내부에서 즉석으로 `LoginView.as_view()`를 만들어 호출) — 그래서 `View` 상속 + 위임 패턴을 썼다.
+2. **카운터 공유** — `is_rate_limited(ip)`는 원래부터 IP만을 캐시 키(`core:admin_login:ratelimit:{ip}`)로 쓰고 URL을 구분하지 않으므로, 두 뷰가 이 함수를 그대로 호출하는 것만으로 자동으로 카운터가 공유된다. 별도 조치를 하지 않았다(설계서가 명시적으로 "새로 설계하지 않는다"고 지시한 부분).
+3. **`webapp/config/urls.py`에 `path("django-admin/login/", RateLimitedAdminLoginView.as_view(), name="admin_login")`를 `path("django-admin/", admin.site.urls)`보다 먼저 추가** — 기존 `cms-admin/login/` 오버라이드와 동일한 배치 원칙. `admin.site.urls`가 내부적으로 등록하는 `login/`(namespace 내 이름 `admin:login`)은 그대로 남아 있어 `reverse("admin:login")`은 깨지지 않고(로컬 검증으로 실측 확인, R2-3), 실제 HTTP 요청만 먼저 배치된 우리 뷰가 가로챈다.
+4. **기존 `/cms-admin/login/` 레이트리밋(WU-09 원본, DEC-028~031)은 코드 변경 없이 그대로 유지** — `RateLimitedLoginView`/카테고리 권한 마이그레이션/`ensure_superuser` 등은 이번 라운드에서 건드리지 않았다.
+
+추가로(03 §5.1 지침 5, 이번 결함 수정과 직접 결부된 문서 정합성 조치로 판단 — DEC-041 참고) `webapp/ADMIN_ACCESS_GUIDE.md` §1/§4를 갱신해 "두 로그인 경로 모두 공유 레이트리밋으로 보호됨"을 반영했다.
+
+**건드리지 않은 것(범위 외 변경 금지)**: Category 권한 마이그레이션(`core/migrations/0001_...`), `ensure_superuser` 커맨드, 로그인 뷰 자체의 그룹 권한 로직 — 전부 라운드 1 그대로다.
+
+### R2-2. 파일 변경 목록
+
+```
+webapp/
+  core/
+    admin_auth.py       (수정) RateLimitedAdminLoginView 신설(신규 클래스), 모듈 docstring 갱신
+    tests.py             (수정) DjangoAdminLoginRateLimitTests(6건) + SharedAdminRateLimitCounterTests(1건) 신규 추가
+  config/
+    urls.py               (수정) django-admin/login/ 을 admin.site.urls보다 먼저 오버라이드
+  ADMIN_ACCESS_GUIDE.md    (수정) §1/§4 — 두 로그인 경로 공유 레이트리밋 반영
+docs/harness/decisions.md  DEC-041(이번 라운드의 구현 세부 판단) 추가
+docs/harness/traceability.md  REQ-010 행 갱신(v1.3 재작업 반영, 6/7/9단계 재검증 대기 명시)
+```
+
+### R2-3. 로컬 동작 확인 (실제 실행 결과)
+
+`webapp/.harness-tmp/venv_09_wu09_r2/`(Python 3.13, `requirements.txt` clean install, 규칙K 준수 — 검증 후 즉시 삭제)로 실행했다.
+
+1. `pip install -r requirements.txt` — 오류 없음(신규 패키지 없음).
+2. `manage.py check`(dev 설정) → "System check identified no issues (0 silenced)".
+3. `manage.py migrate --noinput`(빈 SQLite DB) → 오류 없음.
+4. `manage.py test`(전체, dev 설정) → **재작업 전 29개 → 재작업 후 35개 전부 OK**(신규 6건 = `DjangoAdminLoginRateLimitTests` 5 + `SharedAdminRateLimitCounterTests` 1, 기존 29건 회귀 없음 — 6단계 DEC-031이 추가한 CSRF 경계 테스트 2건 포함).
+5. **DEF-09-01 재현 시나리오를 09단계와 동일한 방법(`django.test.Client`, 동일 IP 11회 연속 POST)으로 `/django-admin/login/`에 직접 재실행** → `[200×10, 429]` — 11번째에 정확히 429가 나와 결함이 해소됨을 실측 확인(수정 전에는 09단계가 `[200×11]`로 재현했던 것과 대조).
+6. **카운터 공유 계약 실측**: 동일 IP로 `/cms-admin/login/`에 5회 + `/django-admin/login/`에 6회(합산 11회) POST → 마지막(11번째, `/django-admin/login/`) 요청에서 429, 이어서 같은 IP로 `/cms-admin/login/`에 보낸 요청도 429(카운터가 URL과 무관하게 공유됨을 양방향으로 확인).
+7. 올바른 자격증명으로 `/django-admin/login/`에 로그인하면 임계값 이내에서 302(로그인 성공)가 옴을 확인(레이트리밋이 정상 로그인 흐름을 깨지 않음).
+8. GET 요청은 카운트되지 않음(11회 반복 GET 모두 200, 단 이미 인증된 세션으로 GET하면 Django 관리자 자체 동작으로 302 리다이렉트되는 것은 정상이며 레이트리밋과 무관 — 최초 조사에서 혼동했다가 신선한 미인증 `Client`로 재확인해 바로잡음).
+9. `reverse("admin:login")`과 `reverse("admin_login")`이 둘 다 `/django-admin/login/`로 정확히 일치함을 확인(내부 `reverse("admin:login")` 호출 경로가 깨지지 않음, 03 §5.1 지침 3의 근거 재확인).
+10. production 유사 설정(`production.py` 상속 + `DATABASES`만 SQLite, 더미 필수 환경변수 전체)에서 `manage.py check`/`migrate`/`collectstatic --noinput` 전부 오류 없이 끝남(`collectstatic` 결과 "218 static files copied ... 638 post-processed" — 라운드 1과 동일 수치로, 이번 라운드가 정적자산을 추가하지 않았음을 재확인).
+
+**정리(규칙K)**: 검증에 사용한 `.harness-tmp/venv_09_wu09_r2/`, 임시 production 유사 설정 모듈(`config/settings/it_test_prodlike_wu09r2.py`), `db.sqlite3`/`db_it_test_wu09r2.sqlite3`, `staticfiles/`, `media/`, `__pycache__` 전부 삭제 확인. `git status --porcelain`으로 diff에 소스/문서 변경만 남았음을 최종 확인했다(기존에 미커밋 상태였던 03-system-design.md/decisions.md/traceability.md/09-security-audit.md 등은 이번 라운드 이전 세션(3단계 v1.3, 9단계 보안검증)이 만든 것이며 그대로 유지했다).
+
+### R2-4. 게이트 1 — 정적 분석/린트
+
+저장소 전체에 Python용 lint/type-check/formatter 설정이 여전히 존재하지 않음을 재확인했다(라운드 1과 동일 결론 — 있는데 건너뛴 것이 아니라 설정 자체가 없다). 대체 수단으로 수정된 `core/admin_auth.py`/`core/tests.py`/`config/urls.py`에 `python -m py_compile`을 실행해 구문 오류 없음을 확인했다.
+
+### R2-5. 게이트 2 — 자체 코드 리뷰 체크리스트
+
+- [x] **설계서/디자인서 명세와 실제 구현이 일치하는가** — 03 §5.1(v1.3) 구현 지침 1~4를 문자 그대로 구현했다(클래스명, 카운터 공유 방식, urls.py 배치 순서 전부 설계서 예시 코드와 일치).
+- [x] **에러 처리가 누락된 경로가 없는가** — `RateLimitedAdminLoginView.dispatch()`는 기존 `RateLimitedLoginView`와 동일하게 `is_rate_limited()`의 예외를 삼키지 않고(그 함수 내부에서만 `ValueError`를 명시적으로 처리), 레이트리밋을 통과한 요청은 `admin.site.login()`에 그대로 위임해 Django 표준 에러 처리(폼 검증 실패 등)를 그대로 따른다.
+- [x] **입력값 검증이 시스템 경계(사용자 입력, 외부 API 응답)에서 이루어지는가** — 로그인 폼 자체의 검증은 Django 표준 `AdminAuthenticationForm`이 수행(재구현하지 않음). 이번 라운드가 새로 받는 입력은 없다(기존 `REMOTE_ADDR` 신뢰 경계 그대로 재사용).
+- [x] **하드코딩된 시크릿/자격증명이 없는가** — 없음. 이번 라운드는 시크릿을 다루지 않는다.
+- [x] **새로 추가한 외부 의존성이 있다면 실존 여부를 확인했는가** — 신규 패키지 없음(설계서 지침이 "기존 `is_rate_limited()`를 재사용"하도록 명시적으로 지시했고 그대로 따름). `requirements.txt` 변경 없음.
+- [x] **범위를 벗어난 변경이 섞여 있지 않은가** — Category 권한 마이그레이션/`ensure_superuser`/`RateLimitedLoginView` 자체 로직 등 라운드 1의 다른 부분은 전혀 건드리지 않았다. `config/urls.py`는 신규 라우트 1줄 + import 1줄만 추가했다.
+
+### R2-6. 수동으로 확인이 필요한 부분 (6단계 테스터 인계)
+
+1. **09단계가 로컬 재현에 썼던 정확한 venv/스크립트(`webapp/.harness-tmp/venv_09_sec`)는 이미 삭제된 상태**이므로, 6단계는 이 노트의 §R2-3 절차(신규 venv + `Client()` 11회 연속 POST)를 자신의 검증 환경에서 처음부터 다시 실행해 독립 재현해야 한다(기존 원칙과 동일 — 5단계 보고를 신뢰하지 않고 재현).
+2. **7단계(통합테스트) 재실행 필요**: DEC-039가 요구한 재검증 체인은 5→6→7→9다. 이번 라운드는 5단계 몫만 수행했으므로, 6단계 PASS 이후 7단계가 WU-01(XFF 미들웨어)/WU-08(모니터링 미들웨어) 등과의 조립 상태에서 `/django-admin/login/` 레이트리밋이 실제로 정상 동작하는지 재확인해야 한다.
+3. **9단계 재검증 필요**: `09-security-audit.md` §6 SEC-02와 동일한 방법(신규 venv, `Client()` 11회 연속 POST)으로 DEF-09-01이 Fixed로 전환되었는지 최종 확인이 남아 있다(§R2-3의 5번 항목이 그 절차를 이미 한 번 로컬로 재현했지만, 9단계는 독립적으로 재실행해야 한다).
+4. **워커 수 전제(DEC-026, `--workers 1`)는 이번 라운드로 변경되지 않았다** — 두 뷰가 공유하는 `LocMemCache` 카운터도 여전히 단일 프로세스 전제 위에서만 정확하다(라운드 1과 동일한 기존 리스크, 신규 아님).
+
+### R2-7. 6단계(단위테스트) 인수 조건 (Acceptance Criteria) — 재작업 라운드 2분
+
+기존 §8의 AC1~22(라운드 1, 여전히 유효 — 회귀 확인 대상)에 더해, 아래 AC23~29를 이번 라운드의 신규 인수 조건으로 추가한다.
+
+23. `webapp/`에서 새 venv를 만들고 `pip install -r requirements.txt`가 오류 없이 끝나는가(신규 패키지 없음, requirements.txt 변경 없음을 `git diff`로 확인).
+24. `reverse("admin_login")`과 `reverse("admin:login")`이 둘 다 `/django-admin/login/`을 반환하는가(URL 이름 충돌 없음).
+25. **(DEF-09-01 재현 절차 그대로)** 동일 `REMOTE_ADDR`로 `/django-admin/login/`에 POST를 10회 보내면 매번 429가 아니고, 11번째 POST에서 429(본문 `text/plain`)가 오는가.
+26. 올바른 사용자명/비밀번호로 `/django-admin/login/`에 임계값 이내에 POST하면 302(로그인 성공)가 오는가.
+27. `/django-admin/login/`에 대한 GET은 11회 반복해도 매번 200(미인증 상태 기준)이고 카운트되지 않는가.
+28. **(카운터 공유 계약)** 동일 IP로 `/cms-admin/login/`에 5회 + `/django-admin/login/`에 6회(합산 11회) POST하면, 11번째 요청에서 429가 오는가. 그 직후 같은 IP로 반대쪽 URL(`/cms-admin/login/`)에 보낸 요청도 429가 오는가(카운터가 양방향으로 공유됨을 확인).
+29. 라운드 1의 AC5(`manage.py test` 전체 통과)를 재실행하면 총 35개 테스트(기존 29 + 신규 6)가 전부 OK인가.
+30. 검증에 사용한 venv/DB/staticfiles/media/임시 설정 모듈을 정리했는지, `git status --porcelain`에 소스/문서 diff만 남는지 확인.
+
+---
+
+이 절 작성 완료 후 **6단계(`06-unit-tester`) 재호출을 트리거한다** — 위 AC1~22(회귀) + AC23~30(신규)을 입력으로 `unit-09-test.md`를 갱신(재검증 라운드 추가)하도록 한다. 6단계 PASS 이후 DEC-039가 정한 순서(7→9)로 이어진다.

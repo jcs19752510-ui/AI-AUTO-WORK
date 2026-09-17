@@ -223,6 +223,104 @@ class AdminLoginRateLimitTests(TestCase):
         self.assertEqual(blocked.status_code, 429)
 
 
+class DjangoAdminLoginRateLimitTests(TestCase):
+    """DEF-09-01(High)/DEC-039/DEC-040 규칙F 재작업 회귀 테스트.
+
+    `/django-admin/login/`(Django 기본 관리자, `RateLimitedAdminLoginView`)도
+    `/cms-admin/login/`과 동일한 방식으로 방어되는지 확인한다. 09단계
+    보안검증(SEC-02)이 실측 재현한 시나리오(동일 IP 11회 연속 POST가 전부
+    200, 429 없음)를 그대로 재실행해 11번째에 429가 나오는지 검증한다."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.url = reverse("admin_login")
+        User.objects.create_user(
+            username="django-admin-user",
+            password="correct-horse-battery-staple-2",
+            is_staff=True,
+            is_superuser=True,
+        )
+
+    def _post_login(self, **overrides):
+        payload = {"username": "django-admin-user", "password": "wrong-password"}
+        payload.update(overrides)
+        return self.client.post(self.url, payload, REMOTE_ADDR="203.0.113.51")
+
+    def test_get_request_renders_login_form_without_counting(self):
+        for _ in range(RATE_LIMIT_MAX_ATTEMPTS + 5):
+            response = self.client.get(self.url, REMOTE_ADDR="203.0.113.51")
+            self.assertEqual(response.status_code, 200)
+
+    def test_failed_attempts_within_limit_return_normal_response(self):
+        for _ in range(RATE_LIMIT_MAX_ATTEMPTS):
+            response = self._post_login()
+            self.assertEqual(response.status_code, 200)
+            self.assertNotEqual(response.status_code, 429)
+
+    def test_eleventh_attempt_returns_429(self):
+        """SEC-02(09단계) 재현 절차와 동일: 동일 IP 11회 연속 POST 중
+        11번째가 429여야 한다(DEF-09-01 재작업 전에는 11회 전부 200이었음)."""
+        for _ in range(RATE_LIMIT_MAX_ATTEMPTS):
+            self._post_login()
+
+        response = self._post_login()
+        self.assertEqual(response.status_code, 429)
+
+    def test_valid_credentials_still_succeed_within_limit(self):
+        response = self._post_login(password="correct-horse-battery-staple-2")
+        self.assertEqual(response.status_code, 302)
+
+    def test_rate_limit_is_scoped_per_ip(self):
+        for _ in range(RATE_LIMIT_MAX_ATTEMPTS):
+            self._post_login()
+        blocked = self._post_login()
+        self.assertEqual(blocked.status_code, 429)
+
+        other_ip = self.client.post(
+            self.url,
+            {"username": "django-admin-user", "password": "wrong-password"},
+            REMOTE_ADDR="198.51.100.21",
+        )
+        self.assertNotEqual(other_ip.status_code, 429)
+
+
+class SharedAdminRateLimitCounterTests(TestCase):
+    """DEC-040이 채택한 옵션 2(카운터 공유)의 핵심 계약: 동일 IP가 두
+    로그인 URL에 시도를 나눠 보내도 합산 임계값(10회)을 넘으면 차단돼야
+    한다 — 분리돼 있었다면 공격자가 예산을 사실상 2배로 늘릴 수 있었다
+    (03 §5.1 v1.3, 09단계 SEC-02 권고 회귀 테스트)."""
+
+    def setUp(self):
+        cache.clear()
+        self.wagtail_url = reverse("wagtailadmin_login")
+        self.django_url = reverse("admin_login")
+        User.objects.create_user(
+            username="shared-admin-user",
+            password="correct-horse-battery-staple-3",
+            is_staff=True,
+            is_superuser=True,
+        )
+
+    def test_attempts_split_across_both_urls_share_one_budget(self):
+        client = Client()
+        ip = "203.0.113.60"
+        payload = {"username": "shared-admin-user", "password": "wrong-password"}
+
+        for _ in range(5):
+            response = client.post(self.wagtail_url, payload, REMOTE_ADDR=ip)
+            self.assertNotEqual(response.status_code, 429)
+        for _ in range(5):
+            response = client.post(self.django_url, payload, REMOTE_ADDR=ip)
+            self.assertNotEqual(response.status_code, 429)
+
+        blocked = client.post(self.django_url, payload, REMOTE_ADDR=ip)
+        self.assertEqual(blocked.status_code, 429)
+
+        also_blocked = client.post(self.wagtail_url, payload, REMOTE_ADDR=ip)
+        self.assertEqual(also_blocked.status_code, 429)
+
+
 class EnsureSuperuserCommandTests(TestCase):
     def setUp(self):
         cache.clear()

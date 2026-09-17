@@ -1,9 +1,21 @@
-"""관리자(Wagtail 어드민) 로그인 무차별대입 방어 (WU-09, REQ-010, 03 §5.1).
+"""관리자 로그인 무차별대입 방어 — Wagtail 어드민 + Django 기본 어드민
+(WU-09, REQ-010, 03 §5.1. v1.3: DEF-09-01/DEC-039/DEC-040 규칙F 재작업으로
+`/django-admin/login/`도 이 모듈이 함께 방어하도록 범위가 넓어졌다).
 
-Wagtail 표준 로그인 뷰(`wagtail.admin.views.account.LoginView`)를 그대로
-쓰되, POST 제출 앞단에서만 레이트리밋을 확인한다 — 뷰 자체를 재구현하지
-않는다(04-ux-design.md §0 "Wagtail 어드민 UI 자체는 벤더 기본 제공 화면이며
-새로 설계하지 않는다"는 원칙을 그대로 따름).
+이 프로젝트는 로그인 폼을 제공하는 관리자 진입점이 `/cms-admin/login/`
+(Wagtail, `RateLimitedLoginView`)과 `/django-admin/login/`(Django 기본
+관리자, `RateLimitedAdminLoginView`) 두 개다. 둘 다 동일한 `auth_user`
+슈퍼유저 계정을 공유하므로(03 §5.1 v1.3 인벤토리), 이 모듈의
+`is_rate_limited(ip)` 카운터는 **URL을 구분하지 않고 IP만으로 두 뷰가
+공유**한다 — 분리하면 공격자가 시도를 두 URL에 나눠 예산을 사실상 2배로
+늘리는 우회가 가능해지기 때문이다.
+
+각 뷰는 Wagtail/Django가 제공하는 원래 로그인 뷰(Wagtail 표준 로그인 뷰
+`wagtail.admin.views.account.LoginView` / Django 기본 관리자
+`admin.site.login()`)를 그대로 쓰되, POST 제출 앞단에서만 레이트리밋을
+확인한다 — 뷰 자체를 재구현하지 않는다(04-ux-design.md §0 "Wagtail 어드민
+UI 자체는 벤더 기본 제공 화면이며 새로 설계하지 않는다"는 원칙을 그대로
+따름. Django 기본 관리자도 동일 원칙을 확장 적용).
 
 새 패키지(django-axes/django-ratelimit 등, 03 §2.6 "확인 필요" 항목)를
 도입하지 않고 DEC-024(뉴스레터 구독 레이트리밋)가 이미 채택한 LocMemCache
@@ -38,8 +50,10 @@ MIDDLEWARE에 항상 포함됨)가 요청을 먼저 거부하는 경우에는 �
 아무리 많이 흘려보내도 그 IP의 카운터는 전혀 소모되지 않고, 이후 유효한
 CSRF로 전환하면 정확히 새 10회 예산을 그대로 받는다)."""
 
+from django.contrib import admin
 from django.core.cache import cache
 from django.http import HttpResponse
+from django.views import View
 
 from wagtail.admin.views.account import LoginView as WagtailLoginView
 
@@ -85,3 +99,34 @@ class RateLimitedLoginView(WagtailLoginView):
                     content_type="text/plain; charset=utf-8",
                 )
         return super().dispatch(request, *args, **kwargs)
+
+
+class RateLimitedAdminLoginView(View):
+    """Django 기본 관리자(`django.contrib.admin`) 로그인 무차별대입 방어
+    (v1.3 규칙F 재작업, DEF-09-01/DEC-039/DEC-040, 03 §5.1 구현 지침 1~3).
+
+    `/cms-admin/login/`(`RateLimitedLoginView`, 위)과 반드시 같은
+    `is_rate_limited(ip)` 카운터를 공유한다 — 새로 만들지 않는다. 두
+    로그인 화면이 동일한 `auth_user` 슈퍼유저 계정을 공유하므로, 카운터를
+    URL별로 분리하면 공격자가 시도를 두 URL에 나눠 예산을 사실상 2배(IP당
+    20회)로 늘리는 우회가 가능해진다(03 §5.1 v1.3 참고).
+
+    Wagtail 쪽처럼 `wagtail.admin.views.account.LoginView`를 상속하지 않는
+    이유는, Django 기본 관리자 로그인 폼은 그 뷰 클래스를 상속할 대상이
+    없기 때문이다 — `django.contrib.admin.sites.AdminSite.login()`은
+    클래스가 아니라 바운드 메서드이며, 내부적으로
+    `django.contrib.auth.views.LoginView.as_view(...)`를 즉석에서 만들어
+    호출한다. 그래서 이 뷰는 `django.views.View`를 상속해 `dispatch()`에서
+    레이트리밋만 확인하고, 통과하면 `admin.site.login()`에 그대로 위임한다
+    (Wagtail 쪽이 `WagtailLoginView`에 위임하는 것과 동일한 패턴)."""
+
+    def dispatch(self, request, *args, **kwargs):
+        if request.method == "POST":
+            ip = request.META.get("REMOTE_ADDR", "")
+            if is_rate_limited(ip):
+                return HttpResponse(
+                    "로그인 시도가 너무 많습니다. 잠시 후 다시 시도해 주세요.",
+                    status=429,
+                    content_type="text/plain; charset=utf-8",
+                )
+        return admin.site.login(request, *args, **kwargs)

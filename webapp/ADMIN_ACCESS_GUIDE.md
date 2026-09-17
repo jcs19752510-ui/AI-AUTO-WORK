@@ -15,6 +15,10 @@
 - `/django-admin/`(Django 기본 어드민)은 뉴스레터 구독자 삭제(REQ-016 파기절차,
   `subscribers/admin.py`) 등 극히 제한된 용도로만 쓰인다. 콘텐츠 운영은
   `/cms-admin/`만 사용한다.
+- **두 로그인 경로 모두 4절의 레이트리밋으로 보호된다**(v1.3 재작업,
+  DEF-09-01/DEC-039/DEC-040). 과거에는 `/cms-admin/login/`만 보호되고
+  `/django-admin/login/`은 무방비였다 — 지금은 두 경로가 IP 기준 카운터를
+  공유한다.
 
 ## 2. 최초 슈퍼유저 계정 생성 (Render 배포 환경)
 
@@ -63,10 +67,19 @@ Shell)과 one-off Job 실행을 지원하지 않는다.** 즉 배포된 인스�
 
 ## 4. 로그인 무차별대입(brute-force) 방어
 
-`/cms-admin/login/`에 대한 POST 요청은 같은 IP에서 15분 동안 10회를 넘으면
-`429`로 즉시 거부된다(`core/admin_auth.py`, WU-09). 계정(사용자명) 기준
-잠금은 의도적으로 두지 않았다 — 공격자가 알려진 운영자 계정명으로 고의
-실패를 반복해 정당한 1인 운영자 본인을 잠그는 것을 막기 위함이다.
+`/cms-admin/login/`(Wagtail)과 `/django-admin/login/`(Django 기본 관리자)
+양쪽 모두, 같은 IP에서 15분 동안 합산 10회를 넘는 POST는 `429`로 즉시
+거부된다(`core/admin_auth.py`의 `RateLimitedLoginView`/
+`RateLimitedAdminLoginView`, WU-09 + v1.3 재작업). **두 경로는 같은 카운터를
+공유한다** — 두 로그인 화면이 동일한 `auth_user` 슈퍼유저 계정을 공유하기
+때문에, 카운터가 URL별로 분리되어 있으면 공격자가 시도를 두 URL에 나눠
+예산을 사실상 2배(IP당 20회)로 늘릴 수 있다. 예를 들어 한 IP에서
+`/cms-admin/login/`에 5회, `/django-admin/login/`에 5회 실패해도 합산
+10회이므로 6번째 URL 어느 쪽에 보내든 11번째 시도는 `429`다.
+
+계정(사용자명) 기준 잠금은 의도적으로 두지 않았다 — 공격자가 알려진 운영자
+계정명으로 고의 실패를 반복해 정당한 1인 운영자 본인을 잠그는 것을 막기
+위함이다.
 
 이 제한은 Django `LocMemCache`(프로세스 로컬)를 쓴다. 이 사이트는 gunicorn
 `--workers 1`로 고정되어 있어(`render.yaml`, DEC-026) 단일 프로세스 전제가

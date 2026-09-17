@@ -8,12 +8,18 @@ from wagtail.documents import urls as wagtaildocs_urls
 
 from blog import urls as blog_urls
 from core import urls as core_urls
-from core.admin_auth import RateLimitedLoginView
+from core.admin_auth import RateLimitedAdminLoginView, RateLimitedLoginView
 from subscribers import urls as subscribers_urls
 
 # Wagtail 어드민 경로를 기본값(/admin/)에서 변경해 자동화 공격 노출을 줄인다
 # (03 §4, §5.1, DEC-009).
 urlpatterns = [
+    # 로그인 레이트리밋(WU-09 v1.3 재작업, REQ-010, DEF-09-01/DEC-039/
+    # DEC-040, core/admin_auth.py) — 아래 admin.site.urls가 등록하는 기본
+    # 로그인 라우트(django-admin/login/)보다 먼저 매칭되도록 둔다.
+    # is_rate_limited()가 IP만으로 카운트하므로 cms-admin/login/ 쪽과 카운터를
+    # 공유한다(의도된 설계, 두 로그인 화면이 동일 auth_user 계정을 공유).
+    path("django-admin/login/", RateLimitedAdminLoginView.as_view(), name="admin_login"),
     path("django-admin/", admin.site.urls),
     # 로그인 레이트리밋(WU-09, REQ-010, core/admin_auth.py) — 아래
     # wagtailadmin_urls의 기본 로그인 라우트보다 먼저 매칭되도록 두되, URL
