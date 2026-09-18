@@ -1,0 +1,28 @@
+# 규칙 K — 검증/테스트용 임시 아티팩트 전용 디렉터리 (venv/임시 DB/임시 설정 전부 이 하위에만 생성)
+.harness-tmp/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+.venv*/
+venv/
+venv*/
+env/
+*.egg-info/
+
+# Django/Wagtail runtime artifacts
+db.sqlite3
+db*.sqlite3
+/staticfiles/
+/media/
+
+# 시크릿 — 절대 커밋하지 않는다 (03 §5.4)
+.env
+config/settings/local.py
+
+# 에디터/OS
+.DS_Store
+.vscode/
+.idea/

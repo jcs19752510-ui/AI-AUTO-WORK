@@ -1,0 +1,31 @@
+{% load wagtailcore_tags %}
+{% wagtail_site as current_site %}
+<div class="site-footer">
+  {% comment %}
+  NewsletterSubscribeForm(REQ-016) — 04-ux-design.md §2 Footer 명세: "홈/
+  목록형 화면 한정, 상세 화면은 본문 하단 인라인과 중복 배치하지 않음".
+  기본값은 숨김이며, 호출부(S-01/S-03/S-04 템플릿)가 footer block을
+  `show_footer_newsletter=True`로 오버라이드해야 노출된다.
+  {% endcomment %}
+  {% if show_footer_newsletter %}
+  <div class="site-footer__newsletter">
+    {% include "subscribers/_newsletter_slot.html" with form_id="footer" %}
+  </div>
+  {% endif %}
+  <nav class="site-footer__legal" aria-label="법적 정보">
+    <ul>
+      <li><a href="/privacy-policy/">개인정보처리방침</a></li>
+      <li><a href="/terms/">이용약관</a></li>
+      <li><a href="/cookies/">쿠키 사용 고지</a></li>
+    </ul>
+  </nav>
+  <p class="site-footer__rss"><a href="{% url 'blog:feed' %}" aria-label="RSS 피드 구독">RSS 피드 구독</a></p>
+  <p class="site-footer__coldstart">
+    ⚡ 무료 인프라로 운영 중이라 오랜만에 방문하시면 첫 로딩이 최대 30초 이상 걸릴 수 있어요.
+    <details>
+      <summary>왜 그런가요?</summary>
+      <p>이 사이트는 무료 서버에서 운영되어, 일정 시간 방문이 없으면 서버가 잠시 대기 상태로 전환됩니다. 다시 방문하시면 서버가 깨어나는 동안 첫 로딩만 조금 오래 걸릴 수 있어요.</p>
+    </details>
+  </p>
+  <p class="site-footer__copyright">&copy; {% now "Y" %} {% if current_site and current_site.site_name %}{{ current_site.site_name }}{% else %}블로그{% endif %}. All rights reserved.</p>
+</div>

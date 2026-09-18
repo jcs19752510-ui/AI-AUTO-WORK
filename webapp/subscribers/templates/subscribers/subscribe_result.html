@@ -1,0 +1,33 @@
+{% extends "base.html" %}
+{% comment %}
+무-JS 폴백 결과 페이지(WU-07). JS가 켜져 있으면 static/js/newsletter.js가
+폼 제출을 가로채 이 페이지로의 이동 자체를 막고 인라인으로 상태를 보여주므로
+(04 §4 NewsletterSubscribeForm idle/submitting/success/error 상태), 이
+템플릿은 JS가 없는 브라우저에서만 실제로 보인다.
+{% endcomment %}
+
+{% block title %}뉴스레터 구독{% endblock %}
+
+{% block body_class %}template-subscribe-result{% endblock %}
+
+{% block content %}
+<div class="subscribe-result">
+  {% if success %}
+  <p class="inline-alert inline-alert--success">구독해주셔서 감사합니다.</p>
+  {% elif rate_limited %}
+  <p class="inline-alert inline-alert--error">요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.</p>
+  {% else %}
+  <p class="inline-alert inline-alert--error">입력 내용을 다시 확인해 주세요.</p>
+  {% if form %}
+  <ul class="subscribe-result__errors">
+    {% for field in form %}
+    {% if field.errors and field.name != "hp_field" %}
+    <li>{{ field.label }}: {{ field.errors|striptags }}</li>
+    {% endif %}
+    {% endfor %}
+  </ul>
+  {% endif %}
+  {% endif %}
+  <a class="button button--secondary" href="{{ next_url }}">돌아가기</a>
+</div>
+{% endblock %}

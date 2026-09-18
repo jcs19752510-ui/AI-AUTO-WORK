@@ -1,0 +1,15 @@
+{% load wagtailimages_tags %}
+{% image value.image width-400 as img_400 %}
+{% image value.image width-800 as img_800 %}
+<figure class="article-image">
+  <img
+    src="{{ img_800.url }}"
+    srcset="{{ img_400.url }} 400w, {{ img_800.url }} 800w"
+    sizes="(max-width: 768px) 100vw, 720px"
+    width="{{ img_800.width }}"
+    height="{{ img_800.height }}"
+    alt="{{ value.alt_text }}"
+    loading="lazy"
+  >
+  {% if value.caption %}<figcaption>{{ value.caption }}</figcaption>{% endif %}
+</figure>

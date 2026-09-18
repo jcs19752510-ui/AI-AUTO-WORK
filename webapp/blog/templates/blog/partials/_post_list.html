@@ -1,0 +1,17 @@
+{% if page_obj.object_list %}
+<ul class="post-grid">
+  {% for post in page_obj.object_list %}
+  <li>{% include "blog/partials/_post_card.html" with post=post %}</li>
+  {% endfor %}
+</ul>
+{% include "blog/partials/_pagination.html" with page_obj=page_obj %}
+{% else %}
+<div class="empty-state">
+  <p>{{ empty_message }}</p>
+  {% if empty_cta_url %}<a class="button button--secondary" href="{{ empty_cta_url }}">홈으로 이동</a>{% endif %}
+  {% comment %}NewsletterSubscribeForm(REQ-016) — 04 §2 S-01 "빈 상태를 구독 전환 기회로 전환".{% endcomment %}
+  {% if empty_show_newsletter %}
+  {% include "subscribers/_newsletter_slot.html" with form_id="home-empty" variant="emphasis" %}
+  {% endif %}
+</div>
+{% endif %}

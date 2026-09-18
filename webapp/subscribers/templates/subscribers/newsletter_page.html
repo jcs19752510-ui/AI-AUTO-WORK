@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% comment %}
+전용 구독 페이지(WU-07, REQ-016) — 캐시된 공개 페이지의 무-JS 폴백
+목적지다(views.py 모듈 docstring). 이 페이지 자체는 캐시되지 않으므로
+`{% csrf_token %}`이 항상 방문자 본인의 쿠키와 일치한다.
+{% endcomment %}
+
+{% block title %}뉴스레터 구독{% endblock %}
+
+{% block body_class %}template-newsletter-page{% endblock %}
+
+{% block content %}
+<div class="subscribe-page">
+  <h1>뉴스레터 구독</h1>
+  <p>새 글이 올라올 때마다 이메일로 알려드립니다.</p>
+  {% include "subscribers/_newsletter_form.html" with form_id="dedicated" %}
+</div>
+{% endblock %}

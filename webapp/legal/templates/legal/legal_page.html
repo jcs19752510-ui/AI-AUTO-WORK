@@ -1,0 +1,36 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }}{% endblock %}
+
+{% block body_class %}template-legal-page{% endblock %}
+
+{% block content %}
+<nav class="breadcrumb" aria-label="브레드크럼">
+  <ol>
+    <li><a href="/">홈</a></li>
+    <li aria-current="page">{{ page.title }}</li>
+  </ol>
+</nav>
+
+<article class="legal-page">
+  <h1>{{ page.title }}</h1>
+  {% if page.last_published_at %}
+  <p class="legal-page__meta">최종 업데이트: {{ page.last_published_at|date:"Y-m-d" }}</p>
+  {% endif %}
+
+  {% if toc_items %}
+  <nav class="legal-page__toc" aria-label="목차">
+    <p class="legal-page__toc-title">목차</p>
+    <ol>
+      {% for text, anchor in toc_items %}
+      <li><a href="#{{ anchor }}">{{ text }}</a></li>
+      {% endfor %}
+    </ol>
+  </nav>
+  {% endif %}
+
+  <div class="legal-page__body article-body">
+    {{ body_html }}
+  </div>
+</article>
+{% endblock %}

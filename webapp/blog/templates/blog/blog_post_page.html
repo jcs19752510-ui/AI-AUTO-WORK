@@ -1,0 +1,108 @@
+{% extends "base.html" %}
+{% load wagtailcore_tags wagtailimages_tags seo_tags %}
+
+{% comment %}
+이 템플릿은 두 경로에서 렌더링된다: (1) blog/views.py::post_detail(정규
+URL /blog/<slug>/, 방문자용, S-02), (2) Wagtail 어드민 미리보기(OP-03,
+BlogPostPage.get_preview_context 기본 동작). 두 경로 모두 컨텍스트 변수명이
+"page"로 동일해(Wagtail PAGE_TEMPLATE_VAR 기본값과 post_detail 뷰의 context)
+이 템플릿 하나로 충분하다 — models.py BlogPostPage.serve()/get_url_parts()
+설명 참고. json_ld/faq_json_ld/og_image_url은 어드민 미리보기 경로에는
+없다(get_preview_context가 채우지 않음) — 아래 각 블록은 조건부 렌더링으로
+존재 여부를 확인하므로 미리보기에서는 조용히 생략될 뿐 오류를 내지 않는다.
+
+주의(WU-04 DEF-001과 동일 계열 함정, unit-04-note.md §10 참고): Django의
+해시 스타일 주석 태그는 한 줄을 넘어가면 파서가 인식하지 못한다 — 이
+파일에서도 이전에 조건 태그 리터럴 문구를 여러 줄 해시 주석 안에 썼다가
+TemplateSyntaxError(Unexpected end of expression)가 실제로 재현되어 지금의
+comment/endcomment 블록 태그로 교체했다(WU-05 로컬 검증에서 직접 발견·수정,
+unit-05-note.md §3 참고). 여러 줄 주석은 항상 comment 블록 태그를 쓸 것 —
+그리고 그 주석 본문 안에서도 중괄호(퍼센트) 태그 문법을 리터럴로 옮겨
+적지 말 것(이 교훈을 설명하다가 실제로 또 재현했었다).
+{% endcomment %}
+
+{% block title %}{{ page.title }}{% endblock %}
+
+{% block og_type %}article{% endblock %}
+
+{% block twitter_card %}{% if og_image_url %}summary_large_image{% else %}summary{% endif %}{% endblock %}
+
+{% block og_image %}
+{% if og_image_url %}
+<meta property="og:image" content="{{ og_image_url }}" />
+<meta property="og:image:width" content="{{ og_image_rendition.width }}" />
+<meta property="og:image:height" content="{{ og_image_rendition.height }}" />
+<meta name="twitter:image" content="{{ og_image_url }}" />
+{% endif %}
+{% endblock %}
+
+{% block extra_head %}
+{% comment %}
+REQ-005/REQ-017 구조화 데이터 — 값이 유효한 JSON으로 안전하게 직렬화되도록
+기본 auto-escape 대신 core.templatetags.seo_tags.jsonld 필터를 쓴다(해당
+파일 상단 설명 참고).
+{% endcomment %}
+{% if json_ld %}
+<script type="application/ld+json">{{ json_ld|jsonld }}</script>
+{% endif %}
+{% if faq_json_ld %}
+<script type="application/ld+json">{{ faq_json_ld|jsonld }}</script>
+{% endif %}
+{% endblock %}
+
+{% block body_class %}template-blog-post{% endblock %}
+
+{% block content %}
+<article class="post-detail">
+  <nav class="breadcrumb" aria-label="브레드크럼">
+    <ol>
+      <li><a href="/">홈</a></li>
+      <li><a href="{% url 'blog:category_list' page.category.slug %}">{{ page.category.name }}</a></li>
+      <li aria-current="page">{{ page.title }}</li>
+    </ol>
+  </nav>
+
+  <header class="post-detail__header">
+    <a class="category-badge" href="{% url 'blog:category_list' page.category.slug %}">{{ page.category.name }}</a>
+    <h1>{{ page.title }}</h1>
+    <p class="post-detail__meta">
+      {% if page.owner %}<span class="post-detail__author">{{ page.owner.get_full_name|default:page.owner.username }}</span>{% endif %}
+      {% if page.first_published_at %}
+      <time datetime="{{ page.first_published_at|date:'c' }}">{{ page.first_published_at|date:"Y년 n월 j일" }}</time>
+      {% endif %}
+      {% if page.last_published_at and page.last_published_at != page.first_published_at %}
+      <span class="post-detail__updated">(수정: <time datetime="{{ page.last_published_at|date:'c' }}">{{ page.last_published_at|date:"Y년 n월 j일" }}</time>)</span>
+      {% endif %}
+    </p>
+    {% if page.tags.all %}
+    <ul class="tag-list">
+      {% for tag in page.tags.all %}
+      <li><a class="tag-chip" href="{% url 'blog:tag_list' tag.slug %}">#{{ tag.name }}</a></li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+  </header>
+
+  {% if page.featured_image %}
+  {% image page.featured_image width-400 as img_400 %}
+  {% image page.featured_image width-800 as img_800 %}
+  <img
+    class="post-detail__hero"
+    src="{{ img_800.url }}"
+    srcset="{{ img_400.url }} 400w, {{ img_800.url }} 800w"
+    sizes="(max-width: 768px) 100vw, 720px"
+    width="{{ img_800.width }}"
+    height="{{ img_800.height }}"
+    alt="{{ page.featured_image.title }}"
+    loading="lazy"
+  >
+  {% endif %}
+
+  <div class="article-body">
+    {% include_block page.body %}
+  </div>
+
+  {% comment %}NewsletterSubscribeForm(REQ-016) — 04 §2 S-02 "본문 하단 인라인". Footer는 기본값(숨김)을 그대로 둬 중복 배치를 피한다.{% endcomment %}
+  {% include "subscribers/_newsletter_slot.html" with form_id="post-detail" %}
+</article>
+{% endblock %}

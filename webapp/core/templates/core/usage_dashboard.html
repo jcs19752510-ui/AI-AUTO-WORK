@@ -1,0 +1,70 @@
+{% extends "wagtailadmin/base.html" %}
+{% load i18n %}
+
+{% block titletag %}사용량 모니터링{% endblock %}
+
+{% block content %}
+  {% include "wagtailadmin/shared/header.html" with title="사용량 모니터링" icon="time" %}
+
+  <div class="nice-padding">
+    <p>
+      이 화면은 REQ-012(무료 티어 사용량 모니터링)의 기술적 장치입니다.
+      아래 수치는 <strong>이 애플리케이션 프로세스가 직접 집계한 요청량/
+      응답시간</strong>이며, Render/Neon의 공식 과금 수치가 아닙니다.
+    </p>
+    <p>
+      <strong>카운터 시작 시각(최근 프로세스 재시작):</strong>
+      {{ snapshot.process_started_at }}<br>
+      무료 티어는 15분 유휴 후 스핀다운되므로, 이 수치는 "서비스 시작 이후
+      전체 누적"이 아니라 <strong>"가장 최근 재시작 이후"</strong> 수치입니다.
+    </p>
+
+    <h2>최근 {{ snapshot.window_days }}일 요청 수 / 평균 응답시간</h2>
+    <table class="listing">
+      <thead>
+        <tr>
+          <th>날짜</th>
+          <th>요청 수</th>
+          <th>평균 응답시간(ms)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for day in snapshot.daily %}
+        <tr>
+          <td>{{ day.date }}</td>
+          <td>{{ day.request_count }}</td>
+          <td>{% if day.avg_response_ms is not None %}{{ day.avg_response_ms }}{% else %}-{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p>최근 {{ snapshot.window_days }}일 합계 요청 수: <strong>{{ snapshot.total_requests }}</strong></p>
+
+    <h2>03-system-design.md §6.3 — 유료 전환 4대 기준</h2>
+    <p>아래 중 하나라도 충족하면 Render Starter 유료 플랜으로 전환합니다.</p>
+    <table class="listing">
+      <thead>
+        <tr>
+          <th>기준</th>
+          <th>이 대시보드로 확인 가능?</th>
+          <th>확인 방법</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for c in criteria %}
+        <tr>
+          <td><strong>{{ c.title }}</strong><br>{{ c.detail }}</td>
+          <td>{% if c.measurable_here %}예{% else %}아니오{% endif %}</td>
+          <td>{{ c.note }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <p>
+      ②③은 이 앱 프로세스 내부에서 관측할 수 없는 플랫폼 지표입니다.
+      <a href="https://dashboard.render.com" target="_blank" rel="noopener noreferrer">Render 대시보드(Billing)</a>와
+      <a href="https://console.neon.tech" target="_blank" rel="noopener noreferrer">Neon 콘솔</a>을
+      운영 Runbook에 따라 주 1회 수동 확인하세요(03 §7.4).
+    </p>
+  </div>
+{% endblock %}

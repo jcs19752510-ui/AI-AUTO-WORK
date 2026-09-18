@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+
+{% block title %}{{ page.title }}{% endblock %}
+
+{% block body_class %}template-home-page{% endblock %}
+
+{% comment %}NewsletterSubscribeForm(REQ-016) — S-01은 04 §2 Footer 명세가 허용하는 "홈/목록형 화면"이다.{% endcomment %}
+{% block footer %}{% include "partials/footer.html" with show_footer_newsletter=True %}{% endblock %}
+
+{% block content %}
+<h1 class="sr-only">{{ page.title }}</h1>
+{% include "blog/partials/_post_list.html" with page_obj=page_obj empty_message="아직 게시된 글이 없습니다. 곧 첫 글로 찾아올게요." empty_show_newsletter=True %}
+{% endblock %}

@@ -1,0 +1,34 @@
+{% comment %}
+500 페이지는 서버 오류 상황에서도 렌더링되어야 하므로 base.html을 extends하지
+않는다(base.html의 wagtailuserbar/wagtail_site 태그와 nav_categories
+컨텍스트 프로세서는 DB 조회를 하는데, DB 장애가 500의 원인이면 그 자체가
+다시 실패할 수 있다). static 태그도 마찬가지 이유로 쓰지 않고 04번 토큰
+값을 인라인 style에 직접 옮겨 적는다(04-ux-design.md 3절, S-09: "Header —
+내비 없이 로고만").
+{% endcomment %}
+<!DOCTYPE html>
+<html lang="ko" dir="ltr">
+    <head>
+        <meta charset="utf-8" />
+        <title>서버 오류</title>
+        <meta name="viewport" content="width=device-width, initial-scale=1" />
+        <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Malgun Gothic", sans-serif; color: #1A1A1A; background: #FFFFFF; max-width: 720px; margin: 64px auto; padding: 0 16px; line-height: 1.6; }
+            .brand { font-weight: 700; font-size: 1.375rem; margin-bottom: 48px; }
+            .actions { margin-top: 24px; display: flex; gap: 12px; }
+            .actions a { display: inline-block; min-height: 44px; line-height: 44px; padding: 0 24px; border-radius: 8px; text-decoration: none; font-weight: 600; }
+            .actions a.primary { background: #1D4ED8; color: #FFFFFF; }
+            .actions a.secondary { border: 1px solid #E2E2DF; color: #1A1A1A; }
+            .actions a:focus-visible { outline: 2px solid #1D4ED8; outline-offset: 2px; }
+        </style>
+    </head>
+    <body>
+        <p class="brand">블로그</p>
+        <h1>일시적인 오류가 발생했습니다</h1>
+        <p>서버에서 예기치 못한 문제가 발생했습니다. 잠시 후 다시 시도해 주세요.</p>
+        <div class="actions">
+            <a class="primary" href="">새로고침</a>
+            <a class="secondary" href="/">홈으로 이동</a>
+        </div>
+    </body>
+</html>

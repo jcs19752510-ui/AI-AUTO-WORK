@@ -1,0 +1,58 @@
+{% comment %}
+NewsletterSubscribeForm 컴포넌트 (REQ-016, 04-ux-design.md §4).
+
+호출부는 반드시 `form_id`(예: "footer"/"post-detail"/"home-empty")를 넘겨야
+한다 — 한 페이지에 이 컴포넌트가 두 번 이상 포함될 수 있어(예: 홈 화면이
+비어 있을 때 본문 강조 배치 + 푸터), 같은 id가 중복되면 label-for 연결이
+깨진다(04 §5 폼 접근성 요건).
+
+`{% csrf_token %}`을 그대로 렌더링해 JS 없이도 항상 제출이 성공한다(04 §0
+"모든 화면은 JS 없이도 동작"). 이로 인한 캐시 공유 효과 저하는 views.py
+상단 주석과 unit-07-note.md §3 참고.
+{% endcomment %}
+<form
+  class="newsletter-form{% if variant == "emphasis" %} newsletter-form--emphasis{% endif %}"
+  method="post"
+  action="{% url 'subscribers:subscribe' %}"
+  data-newsletter-form
+  novalidate
+>
+  {% csrf_token %}
+  <input type="hidden" name="next" value="{{ request.path }}">
+
+  <div class="form-field">
+    <label for="newsletter-email-{{ form_id }}">이메일</label>
+    <input
+      type="email"
+      id="newsletter-email-{{ form_id }}"
+      name="email"
+      required
+      autocomplete="email"
+      aria-describedby="newsletter-email-error-{{ form_id }}"
+    >
+    <p id="newsletter-email-error-{{ form_id }}" class="form-field__error" data-field="email" role="alert" hidden></p>
+  </div>
+
+  <div class="form-field form-field--checkbox">
+    <input
+      type="checkbox"
+      id="newsletter-consent-{{ form_id }}"
+      name="consent"
+      required
+      aria-describedby="newsletter-consent-error-{{ form_id }}"
+    >
+    <label for="newsletter-consent-{{ form_id }}">
+      <a href="/privacy-policy/">개인정보처리방침</a>에 따른 개인정보 수집·이용에 동의합니다.
+    </label>
+    <p id="newsletter-consent-error-{{ form_id }}" class="form-field__error" data-field="consent" role="alert" hidden></p>
+  </div>
+
+  {% comment %}허니팟(03 §5.3/04 §5) — aria-hidden 컨테이너로 스크린리더에서 완전히 제외, tabindex=-1로 키보드 탭 순서에서도 제외.{% endcomment %}
+  <div class="newsletter-form__hp" aria-hidden="true">
+    <label for="newsletter-hp-{{ form_id }}">이 필드는 비워 두세요</label>
+    <input type="text" id="newsletter-hp-{{ form_id }}" name="hp_field" tabindex="-1" autocomplete="off">
+  </div>
+
+  <button type="submit" class="button button--primary">구독하기</button>
+  <p class="newsletter-form__status" data-newsletter-status role="status" aria-live="polite"></p>
+</form>

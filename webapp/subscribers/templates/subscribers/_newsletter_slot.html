@@ -1,0 +1,22 @@
+{% comment %}
+NewsletterSubscribeForm 자리표시자(REQ-016) — `@cache_page`가 걸린 공개
+페이지(홈/카테고리/태그/게시물 상세)에 포함되는 쪽은 이 슬롯뿐이다. 실제
+폼(과 그 안의 `{% csrf_token %}`)은 절대 이 슬롯에 직접 렌더링하지 않는다
+— views.py 모듈 docstring이 설명하는 캐시/CSRF 상호작용 결함을 피하기
+위함이다.
+
+- JS 있음: static/js/newsletter.js가 `data-newsletter-fragment-url`을
+  fetch해 이 슬롯 안을 항상-새로 렌더링된 폼으로 채운다(페이지 이동 없음).
+- JS 없음: `<noscript>` 링크가 캐시되지 않는 전용 페이지(`/newsletter/`)로
+  보낸다 — 04 §0 "모든 화면은 JS 없이도 동작" 원칙을 그대로 지킨다.
+{% endcomment %}
+<div
+  class="newsletter-form-slot{% if variant == "emphasis" %} newsletter-form-slot--emphasis{% endif %}"
+  data-newsletter-slot="{{ form_id }}"
+  data-newsletter-variant="{{ variant }}"
+  data-newsletter-fragment-url="{% url 'subscribers:form_fragment' %}"
+>
+  <noscript>
+    <p><a class="button button--secondary" href="{% url 'subscribers:page' %}">이메일로 뉴스레터 구독하기</a></p>
+  </noscript>
+</div>

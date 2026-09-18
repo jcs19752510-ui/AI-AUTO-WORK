@@ -1,0 +1,9 @@
+<section class="article-faq" aria-label="자주 묻는 질문">
+  <h2 class="article-faq__heading">자주 묻는 질문</h2>
+  {% for item in value.items %}
+  <div class="article-faq__item">
+    <h3 class="article-faq__question">{{ item.question }}</h3>
+    <div class="article-faq__answer">{{ item.answer }}</div>
+  </div>
+  {% endfor %}
+</section>
