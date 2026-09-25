@@ -2,8 +2,8 @@
 
 - 작성 에이전트: `04-ux-designer`
 - 입력: `docs/harness/02-planning.md`(v1.2, PASS), `docs/harness/03-system-design.md`(v1.1, PASS), `docs/harness/decisions.md`(DEC-001~012), `docs/harness/traceability.md`
-- 작성일: 2026-09-16
-- 버전: v1.2 (내부검증 1차/2차 결함 반영 최종본, §8 변경이력 참고)
+- 작성일: 2026-09-16 (최초~v1.2) / 2026-09-25 (v1.3 신규기능)
+- 버전: v1.3 (REQ-019 댓글 UX 신규 반영, §8 변경이력 참고)
 
 ---
 
@@ -95,7 +95,7 @@
 ### S-02 게시물 상세
 - **목적**: 단일 게시물 전문 열람, AI 검색 대응 구조화 데이터 제공(REQ-017).
 - **라우트/REQ**: `GET /blog/<slug>/`(03 §4), REQ-003, REQ-005, REQ-014, REQ-017.
-- **구성요소**: Header, Breadcrumb(홈 > 카테고리 > 제목), CategoryBadge, TagChip(복수), ArticleBody(StreamField 렌더러 — 문단/이미지/인용/FAQ 블록), 작성자 바이라인(owner 표시명, 03 §4 JSON-LD 매핑과 동일 소스), 게시일/수정일(`first_published_at`/`last_published_at`), NewsletterSubscribeForm(본문 하단 인라인), JSON-LD `BlogPosting`(비가시 `<script type="application/ld+json">`), RSSIconLink, Footer.
+- **구성요소**: Header, Breadcrumb(홈 > 카테고리 > 제목), CategoryBadge, TagChip(복수), ArticleBody(StreamField 렌더러 — 문단/이미지/인용/FAQ 블록), 작성자 바이라인(owner 표시명, 03 §4 JSON-LD 매핑과 동일 소스), 게시일/수정일(`first_published_at`/`last_published_at`), **CommentList(승인된 댓글만, v1.3 신규, REQ-019)**, **CommentForm(v1.3 신규, REQ-019)**, NewsletterSubscribeForm(본문 하단 인라인), JSON-LD `BlogPosting`(비가시 `<script type="application/ld+json">`), RSSIconLink, Footer. **배치 순서**: ArticleBody → CommentList → CommentForm → NewsletterSubscribeForm(댓글이 본문에 대한 반응이므로 본문 직후, 구독 유도는 그 다음).
 - **상태**
   - 기본: 위 구성요소 전부 렌더.
   - 빈 상태: 해당 없음(단건 조회이므로 "없음" 대신 404로 처리).
@@ -223,6 +223,8 @@ DEC-003에 따라 기존 디자인 자산이 없으므로 최소 토큰 세트�
 | Breadcrumb | 위치 표시 | 기본(`aria-label="브레드크럼"`) |
 | ArticleBody | StreamField 블록 렌더러 | 문단/이미지(레이지로드)/인용/FAQ 블록별 렌더, 이미지 로드 실패 시 대체텍스트만 노출 |
 | NewsletterSubscribeForm | 이메일 구독 수집(REQ-016) | idle, focus, submitting(버튼 비활성+로딩 표시), success(인라인, "구독해주셔서 감사합니다" — 신규/기존 동일 문구, 03 §5.3 이메일 열거 방지), error-validation(400, 형식/동의 누락 — 필드별 인라인 에러), error-ratelimit(429, "잠시 후 다시 시도해주세요"), honeypot(사용자 비가시, 스크린리더도 비노출) |
+| CommentList (v1.3 신규, REQ-019) | 승인된 댓글 목록 | 기본(작성자 표시명 + 날짜 + 본문, 오래된순), 빈 상태("아직 댓글이 없습니다. 첫 댓글을 남겨보세요"), 승인 대기 중인 댓글은 **목록에 절대 노출하지 않음**(사전승인제, 03 §3.2-1) |
+| CommentForm (v1.3 신규, REQ-019) | 댓글 작성(REQ-019) | idle, focus, submitting(버튼 비활성), success(인라인, **"댓글이 접수되었습니다. 검토 후 게시됩니다" — 승인 전임을 반드시 명시**, 즉시 목록에 뜨지 않는 것이 오류로 오인되지 않도록), error-validation(400, 표시명/본문 누락 — 필드별 인라인 에러), error-ratelimit(429, "잠시 후 다시 시도해주세요"), honeypot(사용자 비가시, 스크린리더도 비노출). NewsletterSubscribeForm과 동일하게 **캐시된 페이지에는 폼을 직접 렌더링하지 않고 자리(slot)만 두며, JS가 캐시 안 되는 조각을 fetch해 채운다**(03 §4 `GET /comments/form-fragment/`, WU-07 CSRF/캐시 상호작용 교훈을 그대로 적용) |
 | CookieConsentBanner | 쿠키 고지 배너 | 최초 노출, 확인 후 숨김(로컬 저장), 자세히 보기 링크 |
 | Button | 공용 버튼 | primary/secondary/text, default/hover/focus/active/disabled |
 | FormField | 라벨+입력+도움말+에러 | default/focus/error/disabled, 에러 시 `aria-describedby`로 에러 텍스트 연결 |
@@ -269,6 +271,7 @@ DEC-003에 따라 기존 디자인 자산이 없으므로 최소 토큰 세트�
 | S-05/S-06/S-07 법적 페이지 | LegalPage 리치텍스트, `last_published_at` | 03 §3.2(LegalPage), §4 | OK |
 | S-06 콘텐츠 정책 섹션 | 신규 라우트 없음 — `/terms/` 내 서브섹션으로 흡수 | 03 §3.2/§4에 전용 라우트 부재 확인 | **이슈 발견 → 해결**: §2 S-06에 근거와 함께 문서화(새 API 요구 없음, 가역적 판단) |
 | 뉴스레터 폼 | email/consent, 성공/실패/레이트리밋 응답 | 03 §3.2(NewsletterSubscriber), §4(`POST /newsletter/subscribe/`), §5.3 | OK |
+| CommentList/CommentForm(v1.3 신규) | Comment.author_name/body/status/created_at, 성공/실패/레이트리밋 응답 | 03 §3.1(ERD)/§3.2-1(Comment)/§4(`POST /comments/submit/`, `GET /comments/form-fragment/`) | OK |
 | 콜드스타트 안내(Footer) | 신규 데이터 불필요(정적 템플릿 카피) | 03 §1.2 "콜드스타트 안내 뷰" 언급을 정적 카피로 구체화 | **이슈 발견 → 해결**: §2 "콜드스타트 UX 설계"에 근거 명시(새 라우트/필드 요구 없음) |
 | ArticleBody 이미지 alt | StreamField 이미지 블록의 alt 필드 | 03 §3.2 "이미지 블록"으로만 서술, 전용 alt 필드 미명시 | **이슈 발견 → 5단계 요구사항으로 기록(§5)**: 새 데이터 모델 변경은 아니며(이미지 블록의 표준 하위 필드), 접근성 요건으로 WU-02 구현 시 반드시 포함하도록 명시. 블로킹 질문 아님(모델 재설계 불필요, 스트림필드 블록 구성 옵션 추가 수준) |
 | RSS/사이트맵/robots | 없음(화면 아님, 외부 소비용) | 03 §4 | OK, 화면 설계 대상 아님을 명확화 |
@@ -285,6 +288,7 @@ DEC-003에 따라 기존 디자인 자산이 없으므로 최소 토큰 세트�
 | 2026-09-16 | v1.0 | 최초 작성 (핵심 플로우, 화면 명세, 디자인 시스템, 컴포넌트, 접근성, 반응형 초안) | 02(v1.2)/03(v1.1) PASS 산출물 기반 |
 | 2026-09-16 | v1.1 | S-06에 "콘텐츠 정책 섹션" 귀속 근거 명시(03 §5.6의 "콘텐츠 정책 페이지" 서술과 §3.2/§4의 라우트 미정의 간 불일치 발견), 콜드스타트 안내를 신규 라우트가 아닌 정적 Footer 카피로 구체화(03 §1.2 "콜드스타트 안내 뷰" 언급이 아키텍처적으로 실시간 화면일 수 없음을 확인) | 내부검증 1차(작성자 관점, API/데이터 정합성 확인)에서 03번과의 잠재적 불일치 2건 발견 — `verify-log_04-ux-design.md` 1차 참고 |
 | 2026-09-16 | v1.2(최종) | §5 접근성 기준에 StreamField 이미지 블록 alt 필드 누락 이슈와 5단계 반영 요구 추가, S-03/S-04에 "카테고리/태그 존재하지만 게시물 0건(빈 상태)" vs "카테고리/태그 자체가 없음(404)"을 명확히 구분, S-09에 플랫폼 레벨 타임아웃이 커스텀 500 화면을 우회할 수 있다는 한계 명시 | 내부검증 2차("이 문서만 보고 화면을 구현할 프론트엔드 개발자" 관점)에서 상태 누락(빈 상태/404 경계 모호) 및 접근성 요구사항 모호점 발견 — `verify-log_04-ux-design.md` 2차 참고 |
+| 2026-09-25 | v1.2 → v1.3(신규 기능) | REQ-019(댓글) v1 승격: S-02에 CommentList/CommentForm 구성요소·배치순서 추가, §4에 두 컴포넌트 상태(특히 "승인 대기" success 문구) 명세 신설, §7 정합성 체크 행 추가 | 사용자 요청(신규 기능), 03-system-design.md v1.5(§3.2-1)와 동일한 세션에서 짝을 이뤄 작성 |
 
 ---
 

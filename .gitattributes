@@ -1,0 +1,5 @@
+# DEF-10-05(10단계 배포테스트, Low) — Windows 로컬(core.autocrlf=true)에서
+# git archive/checkout 시 셸 스크립트의 LF가 CRLF로 바뀌어 셔뱅이 깨지는
+# 것(`env: 'bash\r': No such file or directory`, TC-019로 실제 재현)을
+# 막는다. 런타임 동작에 영향 없는 안전한 변경.
+*.sh text eol=lf

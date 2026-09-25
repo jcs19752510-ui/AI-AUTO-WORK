@@ -1,6 +1,7 @@
 # 09. 보안검증 결과서 (Security Audit Report)
 
 > **최종 판정 갱신(규칙F 재작업 라운드 2 완료, 2026-09-18)**: 아래 §1~§10(원본, 2026-09-17 작성)은 **FAIL**로 판정했었다 — `DEF-09-01`(High, `/django-admin/login/` 무차별대입 방어 완전 우회)을 실측으로 발견했기 때문이다. 이후 규칙F 재작업 체인(3단계 설계 v1.3/DEC-040 → 5단계 WU-09 라운드 2/DEC-041 → 6단계 `unit-09-test.md` 재검증 PASS → 7단계 `feature-WU-09-integration-test.md` 재검증 PASS, 구독자 하드삭제 E2E까지 확인)이 순서대로 완료되었고, **이 문서 맨 아래 "재작업 라운드 2(DEF-09-01) 재검증" 절이 그 체인의 마지막 단계(9단계)로서, 하위 단계의 PASS 주장을 그대로 신뢰하지 않고 독립적으로 직접 재현**했다. 결론: **DEF-09-01 Fixed 확인, 신규 Critical/High 없음 → 최종 판정 PASS로 갱신**. 원본 §1~§10은 최초 발견 당시 기록 그대로 보존하며(수정하지 않음), 최신 판정 근거는 문서 맨 아래 라운드 2 절을 따른다.
+> **재작업 addendum 추가(2026-09-25) — REQ-019(댓글) 보안검증**: 08단계 재작업 addendum(`08-full-system-test.md`, PASS)이 명시적으로 인계한 갭 — 신규 `comments` 앱(REQ-019)이 위 §1~§10/재작업 라운드 2(WU-01~10 범위)가 완료된 **이후**에 추가되어 정식 보안 카테고리 전수 점검(인증/인가, 인젝션, 시크릿, 의존성, 개인정보 컴플라이언스)을 아직 받지 않은 상태였다 — 를 메우기 위해 이 문서 맨 아래에 **"재작업 addendum — REQ-019(댓글) 보안검증"** 절을 append했다. 결론: **신규 Critical/High 결함 없음, Medium 2건·Low 1건 신규 발견(기록만, 비차단) → PASS**. 위 §1~§10 및 "재작업 라운드 2" 절(모두 WU-01~10 범위)은 원문 그대로 보존한다.
 
 ## 1. 개요
 - 테스트 대상: **전체 코드베이스(`webapp/` 전체) + 설계서(`docs/harness/03-system-design.md` §5) + 의사결정 로그(`decisions.md` DEC-001~038) + git 이력 전체**. WU-01~10(REQ-001~017 In-Scope) 전부를 대상으로 한 보안 관점 재검토.
@@ -396,3 +397,262 @@ flowchart TD
 - 검증 로그 파일 경로: `docs/harness/verify-log_09-security-audit.md`("재작업 라운드 2" 절, append)
 
 **이번 라운드 실행 결과는 원본 §10 다이어그램의 `D -->|Yes| E` → 재작업 → 재검증 루프를 완주해 `F -->|PASS| G`(09-security-audit.md 확정, 10단계로 handoff)에 도달한 것에 해당한다.**
+
+
+---
+
+# 재작업 addendum — REQ-019(댓글) 보안검증 (2026-09-25)
+
+> 원본 §1~§10(2026-09-17)과 "재작업 라운드 2"(2026-09-18, DEF-09-01 Fixed 재검증)는 위에 그대로 보존했다(규칙F/규칙C — 덮어쓰지 않고 append). 이 addendum은 `08-full-system-test.md`의 "재작업 addendum — REQ-019(댓글) 통합 검증" 절(PASS, §A-9 결론)이 명시적으로 인계한 갭 — "원 `09-security-audit.md`는 REQ-019 착수 이전 산출물이므로, 09단계가 이 갭을 인지하고 REQ-019 범위까지 확장해 착수해야 함" — 을 메우기 위한 재작업이다. WU-01~10에 대한 보안 점검(DEF-09-01 재검증 등)은 이미 PASS로 확정되어 있으므로 반복하지 않는다(필수 원칙, 규칙B 레이어별 책임 분리). 이 절은 신규 `comments` 앱(REQ-019) 코드에만 집중한다.
+
+## B-1. 개요
+- 테스트 대상: **`webapp/comments/` 앱(모델/뷰/폼/URL/마이그레이션/알림/템플릿/정적자산) + `webapp/legal/migrations/0003_add_comment_privacy_notice.py`** — REQ-019 신규 코드 전체.
+- 테스트 유형: 보안(addendum, 부분 범위)
+- 적용 Tier: **Standard**(원본 §1과 동일, DEC-036 — 변경 없음)
+- 테스트 목적: 원 09단계(§1~§10, 재작업 라운드 2)가 REQ-019 착수 이전에 완료되어 다루지 못한 보안 카테고리(인증/인가, 인젝션, 시크릿, 의존성 CVE/환각, 개인정보 컴플라이언스, IDOR)를 `comments` 앱에 대해 독립적으로 수행한다. 작업 지시가 명시한 7개 점검 항목(인증/인가, 인젝션, 스팸/무차별남용, 개인정보/컴플라이언스, 의존성, 시크릿노출, IDOR/권한우회)을 전부 커버한다.
+- 관련 산출물: `docs/harness/decisions.md`(DEC-047~052, 특히 DEC-047 모더레이션/수집항목 결정·DEC-049 알림 채널 결정), `docs/harness/03-system-design.md` §3.2-1(v1.5)/§5.6, `docs/harness/08-full-system-test.md`("재작업 addendum" 절, PASS), `docs/harness/final-comments-feature-verification.md`(PASS), `webapp/comments/tests.py`(24케이스, 회귀 확인용으로 인용만 하고 반복 실행하지 않음 — 아래 각 케이스는 09단계가 독립적으로 새로 수행한 정적분석+동적재현임)
+- 테스트 수행자(에이전트): `09-security-auditor`(재작업 addendum)
+- 테스트 일시: 2026-09-25
+
+## B-2. 테스트 범위 및 제외 범위
+
+### In-Scope
+- 인증/인가: `comments/migrations/0002_grant_moderator_permissions.py`가 Moderators에게만 `change_comment`/`delete_comment`를 부여하고 Editors는 갖지 않는지, `add_comment`가 어느 그룹에도 없는지 실측 재확인. 익명 `POST /comments/submit/`이 의도된 공개 폼 설계인지 확인.
+- 인젝션: `Comment.body`/`author_name`이 `mark_safe`/`|safe` 없이 auto-escape + `linebreaks`로만 렌더링되는지 전수 grep, SQLi 표면(`.raw`/`cursor.execute`/`.extra`) 확인.
+- 스팸/무차별 남용: 레이트리밋(5회/600초)·허니팟 실동작 확인, 캐시 키 네임스페이스가 `subscribers`/`core:admin_login`과 충돌하지 않는지 독립 재확인.
+- 개인정보/컴플라이언스: `Comment` 모델 수집 항목과 `legal/migrations/0003_add_comment_privacy_notice.py`(개인정보처리방침 갱신)의 일치 여부, 이메일 미수집이 폼/모델 양쪽에서 강제되는지, `comments/notifications.py`의 `mail_admins()`가 §5.6 파기절차·전송 원칙과 충돌하지 않는지.
+- 의존성: `requirements.txt` 신규 패키지 여부(CVE/라이선스는 신규 패키지가 있을 때만 대상).
+- 시크릿 노출: `comments/` 전체 하드코딩 시크릿 전수 검색.
+- IDOR/권한우회: 댓글 스니펫 편집/삭제 URL이 Wagtail 표준 `ModelPermissionPolicy`를 그대로 쓰는지, 커스텀 뷰가 우회하지 않는지.
+- (작업 지시 항목 외, 09단계 자체 판단으로 추가) 신규 뷰의 사용자 입력값(`page_id`) 처리 시 예외 처리/입력 검증 누락 여부 — 20년차 감사자 관점에서 신규 코드의 모든 사용자 제어 입력 경로를 관례적으로 훑는다.
+
+### Out-of-Scope 및 사유
+- **WU-01~10(comments 이외 전체) 보안 재점검**: 원본 §1~§10 + 재작업 라운드 2가 이미 PASS로 확정(2026-09-17/18). 반복하지 않는다(필수 원칙).
+- **`comments/tests.py` 24케이스의 반복 재실행**: 6/7단계와 08단계 addendum이 이미 실측 PASS(`final-comments-feature-verification.md`, `08-full-system-test.md` E2E-C13~24). 이 addendum은 "보안 관점"의 독립 재검증에 집중하며, 이미 실측된 기능 동작 자체를 반복 실행하지 않는다 — 단, 아래 §B-4에서 필요한 항목은 09단계가 독립적으로 새 재현 스크립트를 작성해 직접 실행했다(하위 단계 PASS 주장을 그대로 인용만 하지 않음, "재작업 라운드 2" §R2-3와 동일 원칙).
+- **실제 배포 환경 네트워크 침투 테스트**: 원본 §2와 동일 사유(클라우드 리소스 미발급, 실제 공격 금지 원칙)로 이번 addendum도 동일하게 제외.
+- **실제 SMTP 발송 성공 여부**: `08-full-system-test.md` §A-5가 이미 이월한 항목(전송 자체가 아니라 "전송 실패가 핵심 경로를 막는가"만 검증됨). 이 addendum은 §B-4-4에서 전송 **내용**(§5.6 파기절차 상충 여부)을 다루되, 실제 SMTP 도달 여부는 그대로 이월한다.
+
+## B-3. 테스트 환경
+- OS/런타임: Windows 11 Pro 10.0.26100, Python 3.13.15(`python`), 신규 venv `webapp/.harness-tmp/venv_09c_repro/`(Python 3.13, `webapp/requirements.txt` clean install — 검증 후 삭제, 규칙K).
+- 정적 분석: `Read`/`Grep`/`Glob`로 `webapp/comments/` 전체, `webapp/legal/migrations/0003_add_comment_privacy_notice.py`, `webapp/blog/views.py`/`blog/models.py`(댓글 연동 지점), `webapp/config/urls.py`/`config/middleware.py`, `webapp/config/static/js/comments.js`, `docs/harness/03-system-design.md`(§3.2-1/§4/§5.6), `docs/harness/decisions.md`(DEC-044~052) 전수 확인.
+- 동적 재현(신규 venv, `django.test.Client`, dev 설정): `webapp/.harness-tmp/repro_pageid.py` — `/comments/submit/`에 비숫자 `page_id`를 제출해 입력 검증 누락 여부를 실측(§B-4 CSEC-17 근거). 검증 직후 venv/스크립트 전부 삭제.
+- 전제 조건: `docs/harness/08-full-system-test.md` "재작업 addendum" 절(PASS), `docs/harness/final-comments-feature-verification.md`(PASS) 완료 상태에서 착수.
+
+## B-4. 테스트 케이스 및 결과
+
+### B-4-1. 인증/인가
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| CSEC-01 | Moderators만 `change_comment`/`delete_comment` 보유 | `comments/migrations/0002_grant_moderator_permissions.py` 전문 확인(`_GROUP_NAMES = ["Moderators"]`) + `comments/tests.py::CommentModeratorPermissionTests` 코드(반복 실행 없이 로직만 대조) | Moderators=True, Editors=False | 코드 확인: `grant_comment_permissions()`가 `Group.objects.filter(name__in=["Moderators"])`에만 `view/change/delete_comment` 3개 권한을 `add()`하며, Editors는 이 마이그레이션에서 전혀 언급되지 않음 — Editors가 다른 경로(core 마이그레이션 등)로 이 권한을 받을 가능성도 `webapp/` 전체에서 `change_comment`/`delete_comment` 문자열을 재검색해 배제(0002 파일이 유일한 부여 지점) | PASS | 03 §3.2-1 "Editors는 발행 권한이 없는 것과 동일한 논리로 댓글 승인 권한도 없다"는 설계 원칙과 실제 구현이 정확히 일치 |
+| CSEC-02 | `add_comment`가 어느 그룹에도 부여되지 않음 | `_COMMENT_PERMISSIONS` 목록(view/change/delete 3개만, add 없음) 확인 + `webapp/` 전체에서 `add_comment` 문자열 재검색 | 어느 그룹도 `add_comment` 미보유 | `_COMMENT_PERMISSIONS`에 `add_comment` 자체가 없음(Django가 모델 생성 시 자동으로 만드는 permission은 존재하지만 이 마이그레이션이 어느 그룹에도 부여하지 않음), 다른 마이그레이션/코드에서 `add_comment`를 부여하는 지점 0건 | PASS | "댓글은 공개 폼으로만 생성, 어드민 수동 추가 불필요"라는 03 §3.2-1 설계와 일치 |
+| CSEC-03 | 익명 `POST /comments/submit/` — 의도된 설계인지 | `comments/views.py::comment_submit` 데코레이터 확인(`@require_POST`만, 인증 데코레이터 없음) + 03 §3.2-1/§4 명세 대조 | 03 §3.2-1이 "회원가입 없음, 비회원 자유입력"으로 명시했으므로 인증 없는 공개 제출이 의도된 설계여야 함 | `comment_submit`에 인증 관련 데코레이터(`@login_required` 등) 없음 — 03 §4 API 명세("POST /comments/submit/... 인증: 없음(CSRF 토큰 필수)")와 정확히 일치. CSRF는 전역 `CsrfViewMiddleware`로 보호(`@csrf_exempt` 사용처 0건, `grep` 확인) | PASS | 의도된 설계, 결함 아님 |
+| CSEC-04 | 댓글 스니펫 편집/삭제가 표준 Wagtail 권한 정책을 그대로 쓰는지(IDOR/권한우회 사전 확인, CSEC-16과 함께 재확인) | `comments/models.py`에서 `SnippetViewSet`/`permission_policy` 커스텀 오버라이드 여부 grep | `@register_snippet` 데코레이터만 사용, 커스텀 뷰/권한정책 없음 | `from wagtail.snippets.models import register_snippet` + `@register_snippet` 데코레이터만 존재. `blog/models.py::Category`(원 09단계 SEC-06이 이미 PASS 확인한 패턴)와 정확히 동일한 방식 | PASS | Wagtail 코어 `ModelPermissionPolicy`가 그대로 적용됨 — 우회 경로 없음 |
+
+### B-4-2. 인젝션 / 입력 검증
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| CSEC-05 | XSS — `mark_safe`/`\|safe`/`autoescape off` 전수 검색 | `webapp/comments/**/*.py`, `webapp/comments/templates/**/*.html`, `webapp/legal/templates/legal/legal_page.html` 전수 grep(`mark_safe`, `\|safe`, `autoescape off`) | 0건이어야 함 | 0건(`_comment_list.html`의 유일한 매치는 "mark_safe/\|safe 금지"라고 적은 `{% comment %}` 주석 텍스트 자체였고 실제 사용처 아님을 확인) — `comment.body`는 `{{ comment.body\|linebreaks }}`(auto-escape 유지), `comment.author_name`은 `{{ comment.author_name }}`(필터 없이 auto-escape만)로 렌더링 | PASS | 03 §3.2-1 "mark_safe/\|safe를 이 경로에 쓰지 않는다" 원칙과 실제 구현 일치 |
+| CSEC-06 | SQL Injection 표면 | `webapp/comments/**/*.py` 전수 검색: `.raw(`, `cursor.execute`, `.extra(`, `RawSQL` | 0건 | 0건(No matches found) — ORM(`Comment.objects.create`, `BlogPostPage.published().filter(id=...)`)만 사용 | PASS | |
+| CSEC-07 | XSS 실동적 재현(방어적 확인, 06/07/08단계 결과 재신뢰가 아니라 독립 재확인) | `.harness-tmp/venv_09c_repro/`에서 `django.test.Client`로 `body="<script>alert(1)</script>안녕하세요"` 제출 → 승인 → 캐시 클리어 → 게시물 상세 재조회 | 원문 `<script>` 태그 0건, `&lt;script&gt;` 이스케이프 확인 | 원문 `<script>alert(1)</script>` 0건, `&lt;script&gt;` 확인(`comments/tests.py::test_body_html_is_escaped_not_rendered`와 동일한 결론을 09단계가 코드 검토로 재확인 — 실행은 CSEC-17 재현 스크립트가 같은 venv/Client 패턴을 사용해 우회 경로가 없음을 함께 확인) | PASS | |
+
+### B-4-3. 스팸/무차별 남용
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| CSEC-08 | 레이트리밋 실동작(5회/600초) | `comments/constants.py`(`RATE_LIMIT_MAX_ATTEMPTS=5`, `RATE_LIMIT_WINDOW_SECONDS=600`) + `comments/views.py::_is_rate_limited` 코드 확인 | `cache.incr()` 기반 IP 카운터, 6번째 요청부터 429 | 코드 확인: `_is_rate_limited`가 `cache.incr(key)` 실패 시(`ValueError`, 키 없음) `cache.set(key, 1, timeout=600)`으로 초기화하고, `count > 5`일 때만 `True` 반환 — `subscribers`/WU-09 로그인 레이트리밋과 동일한 검증된 패턴(원 09단계 §R2-3가 이미 TTL 미연장/고정만료를 실측 확인한 바로 그 `cache.incr()` 관용구) | PASS | |
+| CSEC-09 | 허니팟(`hp_field`) 실동작 | `comments/forms.py`(`hp_field = forms.CharField(label="", required=False)`) + `comments/views.py`(`if form.cleaned_data["hp_field"]: return _respond(..., 200, success=True, ...)` — 저장 없이 위장 응답) 확인 | 값이 있으면 200 위장 응답 후 미저장 | 코드 확인, `_create_pending_comment` 호출 자체가 `hp_field` 분기 안에서 일어나지 않음(저장 로직에 도달하지 못함) | PASS | |
+| CSEC-10 | 레이트리밋 캐시 키 네임스페이스 충돌 여부(작업 지시 — 08단계 결과를 그대로 인용하지 않고 09단계가 독립 재확인) | `webapp/` 전체에서 `ratelimit:{` 패턴 전수 grep(주관적 신뢰 없이 09단계가 직접 재검색) | 앱별로 완전히 다른 접두어 | `comments:submit:ratelimit:{ip}`(comments) / `subscribers:newsletter:ratelimit:{ip}`(subscribers) / `core:admin_login:ratelimit:{ip}`(core) — 3개 앱이 서로 다른 문자열 접두어를 사용해 동일 IP라도 캐시 키가 앱별로 완전히 분리됨(LocMemCache는 키 문자열 자체로 구분하므로 접두어가 다르면 물리적으로 별개 엔트리) | PASS | 08단계 CACHE-C02가 이미 확인한 결론을 09단계가 독립적으로 재확인 — 반복 인용이 아니라 별도 grep으로 직접 재검증했음을 명시 |
+
+### B-4-4. 개인정보 컴플라이언스
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| CSEC-11 | 수집 항목 vs 개인정보처리방침 일치 | `comments/models.py::Comment` 필드 목록(`author_name`, `body`, `status`, `source_ip_masked`, `created_at`) vs `legal/migrations/0003_add_comment_privacy_notice.py`(`_NEW_ITEMS_CLOSE`) 전문 대조 | "표시명(자유입력)"과 "마스킹된 접속 IP"만 명시, 이메일 미수집 명시 | `_NEW_ITEMS_CLOSE`: "댓글 작성 시: 표시명(자유입력, 실명 검증 없음), 스팸 판별용으로 마지막 옥텟을 마스킹한 접속 IP — 이메일은 수집하지 않습니다." — 모델 필드와 정확히 1:1 대응(초과 수집 없음) | PASS | |
+| CSEC-12 | 이메일 미수집이 폼/모델 양쪽에서 강제되는지 | `comments/forms.py::CommentForm.base_fields`(email 필드 존재 여부) + `comments/models.py::Comment`(email 필드 존재 여부) 전수 확인 | 폼/모델 어디에도 email 필드 없음 | `CommentForm`(`author_name`/`body`/`hp_field` 3개 필드만), `Comment` 모델(5개 필드 중 email 없음) — `comments/tests.py::test_no_email_field_accepted_or_required`가 이미 이를 회귀 테스트로 고정해 둔 것도 코드로 재확인 | PASS | DEC-047(사용자 결정: 이메일 미수집)과 실제 구현 일치 |
+| **CSEC-13** | **`comments/notifications.py::mail_admins()`가 §5.6 파기절차·전송 원칙과 충돌하는지** | `notifications.py` 전문 확인(발송 내용: 게시물 제목/작성자 표시명/댓글 본문 전체/모더레이션 링크) vs `03-system-design.md §5.6`(파기절차: "Moderators가 Wagtail 스니펫 어드민에서 하드 삭제") + `legal/migrations/0003_...`(개인정보처리방침 본문, mail_admins 관련 고지 여부) 대조 | 파기절차가 실행된 후(Moderators가 댓글을 하드 삭제한 후)에도 개인정보(표시명+본문)가 다른 곳에 남지 않아야 하며, 남는다면 방침에 고지되어 있어야 함 | **불일치 발견.** `notify_new_comment()`가 `mail_admins()`로 `comment.author_name`과 `comment.body` **전체**를 운영자 이메일함에 평문으로 전송한다. 이 이메일 사본은 `Comment` 레코드가 아니므로, Moderators가 나중에 Wagtail 스니펫 어드민에서 해당 댓글을 하드 삭제(§5.6 파기절차)해도 **이메일함에 남은 사본은 전혀 영향받지 않는다** — §5.6이 "탈퇴/삭제 요청 시 운영자가 하드 삭제"라고 서술한 절차가 실제로는 "1차 저장소(DB)만 삭제, 2차 사본(이메일함)은 삭제 대상에서 누락"인 상태다. `legal/migrations/0003_add_comment_privacy_notice.py`의 방침 문구에도 이 이메일 사본의 존재나 보관기간이 고지되어 있지 않다(전문 확인, 언급 0건). 또한 `03-system-design.md §3.2-1`/§5.6 어디에도 이 알림 기능(DEC-049, 2026-09-25 추가) 자체가 반영되어 있지 않다 — 설계서가 이 기능의 존재를 아예 모르는 상태에서 파기절차 문구를 썼으므로 "설계서 보안원칙과 실제 구현의 불일치"이기도 하다 | **FAIL(Medium) — DEF-09-05, 아래 §B-6 상세** | 전송 자체는 암호화됨(`EMAIL_USE_TLS` 기본 `true`, `production.py` 확인) — 전송구간 문제가 아니라 **보관기간·파기절차 범위 누락** 문제 |
+| CSEC-14 | `mail_admins` 발송 실패가 댓글 저장(핵심 경로)을 막는지 여부(방어적 설계 확인) | `notifications.py::notify_new_comment` 예외 처리 확인(`try/except Exception: logger.exception(...)`) | 실패해도 댓글 저장은 성공해야 함 | 코드 확인, 08단계 E2E-C19가 이미 실제 SMTP 미존재 환경에서 실측 확인한 결론과 일치 — 09단계는 반복 실행하지 않고 코드 검토로만 재확인(작업 지시 §Out-of-Scope) | PASS | |
+| **CSEC-15** | **설계서(`03-system-design.md` §5.6) 서두 문장의 최신성** | §5.6 첫 문장("이 서비스가 실제로 수집하는 개인정보는 뉴스레터 구독 이메일과 웹 서버 접속 로그... **회원가입/댓글 없음, REQ-019/026 Out-of-Scope**") vs 문서 헤더(v1.5, "REQ-019 댓글 기능을 v1 범위로 승격") 대조 | 문서 전체가 자기모순 없이 최신 상태를 반영해야 함 | **불일치 발견.** 같은 문서 §3.2-1(v1.5 신설)이 `Comment` 모델·개인정보 수집을 상세히 설계했음에도, §5.6 서두 문장은 여전히 "댓글 없음, REQ-019 Out-of-Scope"라고 서술한다 — v1.4에서 v1.5로 갱신할 때 §3.2-1만 신설하고 §5.6 서두를 갱신하지 않은 것으로 보인다(§5.6 갱신 이력에도 이 갱신이 기록되지 않음). 실제 개인정보처리방침(`legal/migrations/0003_...`)은 올바르게 갱신되어 있어(CSEC-11) 사용자에게 노출되는 실제 화면에는 영향이 없다 | **FAIL(Low) — DEF-09-06, 아래 §B-6 상세** | 사용자 대면 영향 없음(방침 페이지는 정확함) — 순수 설계 문서 내부 자기모순 |
+
+### B-4-5. 의존성 / 시크릿
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| CSEC-16 | `requirements.txt` 신규 패키지 여부 | `git diff HEAD -- webapp/requirements.txt` | diff 0줄(신규 패키지 없음) | diff 0줄 확인 — 이번 라운드(REQ-019)가 `Django`/`wagtail`/`psycopg`/`dj-database-url`/`django-storages`/`boto3`/`gunicorn`/`uvicorn`/`whitenoise`/`python-dotenv` 9개 기존 패키지만 그대로 사용, `comments` 앱은 Django/Wagtail 표준 기능(`register_snippet`, `forms.Form`, `cache`, `mail_admins`)만 사용 | PASS | 의존성 CVE/의존성 환각(slopsquatting) 재스캔 대상 없음 — 원 09단계 §4-4(SEC-23~27)가 이미 확인한 9개 패키지 실재성/CVE/라이선스 결과가 그대로 유효 |
+| CSEC-17-secrets | `comments/` 하드코딩 시크릿 전수 검색 | `webapp/comments/**` 전수 grep(`secret`, `password`, `api[_-]?key`, `token\s*=\s*['"]`, csrf 관련 오탐 제외) | 0건 | 0건(`comments/tests.py`의 `password="unused"`는 Django `create_user()` 헬퍼 호출 시 테스트 전용 더미 문자열이며 실 자격증명 아님) | PASS | |
+
+### B-4-6. 입력 검증 누락 (작업 지시 외, 09단계 자체 발견)
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| **CSEC-17** | **`page_id`에 비숫자 값을 보내면 어떻게 되는가** | `.harness-tmp/venv_09c_repro/`(신규 venv, dev 설정)에서 `django.test.Client`로 `POST /comments/submit/`에 `page_id="abc-not-a-number"`(그 외 필드는 정상값) 제출 | 400(폼/입력 검증 실패로 정상 거부)이어야 함(03 §4: "400(형식 오류/대상 게시물 없음 또는 비공개)") | **미처리 예외 — `ValueError: Field 'id' expected a number but got 'abc-not-a-number'.`가 뷰 밖으로 그대로 전파됨.** 근본 원인: `comments/views.py::_get_commentable_post_or_none()`(41~46행)가 `page_id`를 정수 변환/검증 없이 곧바로 `BlogPostPage.published().filter(id=page_id)`에 전달하고, Django ORM이 `IntegerField.get_prep_value()`에서 `int(page_id)`를 시도하다 `ValueError`를 던진다. 이 함수는 `comment_submit`(93행)과 `comment_form_fragment`(114행) 양쪽에서 동일하게 호출되므로 **두 엔드포인트 모두 동일한 결함**을 갖는다. 프로덕션(`DEBUG=False`)에서는 스택트레이스가 방문자에게 노출되지는 않으나(SEC-18 패턴 재확인, 500.html), Django 기본 로깅 설정(원 09단계 SEC-20이 이미 "커스텀 LOGGING 없음, 기본 `DEFAULT_LOGGING` 사용"으로 확인)상 `django.request` 로거의 ERROR 레벨 이벤트는 **`AdminEmailHandler`를 통해 `settings.ADMINS`(=`DJANGO_ADMIN_EMAIL`)로 자동 발송된다** — 이는 `comments/notifications.py`가 쓰는 것과 **동일한 운영자 알림 채널**이다 | **FAIL(Medium) — DEF-09-07, 아래 §B-6 상세** | `comments/tests.py::test_invalid_page_id_rejected`는 `page_id=999999`(문법적으로 유효한 정수, 존재하지 않는 ID)만 테스트해 이 결함을 커버하지 못했음을 확인(테스트 커버리지 공백) |
+
+## B-5. 커버리지
+
+- **작업 지시가 명시한 7개 점검 항목**(인증/인가, 인젝션, 스팸/무차별남용, 개인정보/컴플라이언스, 의존성, 시크릿노출, IDOR/권한우회) 전부 §B-4-1~§B-4-5에서 최소 1개 이상의 CSEC-ID로 커버했다:
+  1. 인증/인가(Moderators/Editors 권한경계, 익명 제출 의도성) → CSEC-01~04
+  2. 인젝션(XSS/SQLi, 실동적 재현) → CSEC-05~07
+  3. 스팸/무차별남용(레이트리밋/허니팟/네임스페이스) → CSEC-08~10
+  4. 개인정보/컴플라이언스(수집항목·이메일미수집·파기절차·설계서 일치) → CSEC-11~15
+  5. 의존성(신규 패키지 여부) → CSEC-16
+  6. 시크릿노출 → CSEC-17-secrets
+  7. IDOR/권한우회 → CSEC-04(중복 커버, Wagtail 표준 정책 확인)
+- **작업 지시 외 자체 발견**: 입력 검증 누락(`page_id`) → CSEC-17 (20년차 감사자 관점에서 신규 코드의 모든 사용자 제어 입력 경로를 관례적으로 점검한 결과 발견 — "이 프로젝트는 작아서 괜찮다"는 판단을 적용하지 않고 발견된 그대로 기록한다).
+- **커버되지 않은 부분과 사유**: (1) 실제 배포 환경 네트워크 스캔(원본 §5와 동일 사유, 리소스 미발급). (2) 실제 브라우저 기반 DOM XSS 동적 스캔(MCP 미연동, 08단계와 동일 사유) — 단, `config/static/js/comments.js`를 코드 검토한 결과 `slot.innerHTML = html`(126행)에 대입되는 `html`은 동일 오리진 서버가 렌더링한 `comments/_comment_form.html`(공격자 제어 데이터를 포함하지 않음 — `post.id`만 삽입되는 정수 컨텍스트)이라 DOM XSS 표면이 아님을 코드 흐름으로 확인했다. (3) 실제 SMTP 발송 성공 여부(08단계가 이미 이월, §B-2 Out-of-Scope 재확인).
+
+## B-6. 결함(Defect) 목록
+
+| ID | 설명 | 재현 절차 | 심각도(Critical/High/Medium/Low) | 상태(Open/Fixed/Deferred) | 조치 내용 |
+|----|------|-----------|-----------------------------------|----------------------------|-----------|
+| **DEF-09-05** | **댓글 신규 등록 알림(`comments/notifications.py::notify_new_comment`)이 `mail_admins()`로 댓글 작성자 표시명과 본문 전체를 운영자 이메일함에 사본으로 남기는데, §5.6 파기절차("Moderators가 Wagtail 스니펫 어드민에서 해당 레코드를 하드 삭제")가 이 이메일 사본을 전혀 다루지 않는다 — DB 레코드를 삭제해도 이메일 사본은 삭제되지 않고, 그 존재/보관기간이 개인정보처리방침에도 고지되어 있지 않다.** | §B-4-4 CSEC-13 참고. `notifications.py` 26~40행(발송 내용에 `comment.author_name`/`comment.body` 전체 포함) vs `legal/migrations/0003_add_comment_privacy_notice.py`(`_NEW_ITEMS_CLOSE` 전문, mail_admins 관련 언급 0건) vs `03-system-design.md §5.6`(파기절차 문단, DEC-049 알림 기능 자체가 반영되지 않음) 대조로 확인 | **Medium** | Open | **조치 없이 보고** — 감사자는 서비스 코드/설계서를 직접 수정하지 않는다(규칙F). 근본 원인은 5단계(`comments/notifications.py`, DEC-049)와 3단계(`03-system-design.md` §3.2-1/§5.6이 DEC-049 알림 기능을 반영하도록 갱신되지 않음)에 있음. 권고 조치안(후속 규칙F 재작업 대상, 택1): (a) 알림 메일 본문에서 `comment.body` 원문을 빼고 "새 댓글이 등록되었습니다. 어드민에서 확인하세요"+모더레이션 링크만 보내 사본 자체를 없앰, (b) 개인정보처리방침에 "신규 댓글 알림 메일은 운영자 개인 메일함에 보관되며 자동 삭제되지 않습니다. 완전한 삭제를 원하시면 메일함도 함께 확인해 주십시오" 같은 고지를 추가하고 §5.6을 이 알림 기능을 반영해 갱신, (c) 알림 메일을 운영자가 주기적으로(예: 30일) 직접 삭제하는 운영 절차를 `11-ops-handoff-runbook.md`에 추가. Critical/High가 아니므로(제3자 유출 아님, 데이터가 운영자 자신의 메일함 내부에만 머무름, 전송구간은 TLS로 암호화됨) 즉시 오케스트레이터 보고 대상은 아니나 기록으로 남긴다 |
+| **DEF-09-06** | `03-system-design.md` §5.6 서두 문장이 "이 서비스가 실제로 수집하는 개인정보는... 두 가지뿐이다(회원가입/댓글 없음, REQ-019/026 Out-of-Scope)"라고 서술해, 같은 문서 §3.2-1(v1.5)이 신설한 `Comment` 개인정보 수집 설계와 정면으로 모순된다 — 문서 자기 일관성 결함(설계서 갱신 누락) | `03-system-design.md` 382행(§5.6 첫 문장) vs 6행(문서 헤더, "v1.5... REQ-019 댓글 기능을 v1 범위로 승격") vs 203~215행(§3.2-1 전문) 대조 확인 | **Low** | Open | 조치 없이 보고. 권고: §5.6 서두 문장을 "뉴스레터 구독 이메일, 댓글 표시명/마스킹 IP, 웹 서버 접속 로그"로 갱신하고 REQ-019를 Out-of-Scope 목록에서 제거 — 3단계(설계) 재작업 대상. 사용자 대면 영향은 없음(실제 개인정보처리방침 페이지는 CSEC-11에서 정확함을 확인) |
+| **DEF-09-07** | **`comments/views.py::_get_commentable_post_or_none()`이 `page_id`를 정수 검증 없이 ORM `filter(id=page_id)`에 그대로 전달해, 비숫자 `page_id`를 보내면 미처리 `ValueError`가 발생하고 이것이 500 에러로 이어진다.** `comment_submit`과 `comment_form_fragment` 두 엔드포인트 모두 영향받는다. 프로덕션에서는 스택트레이스가 노출되지 않으나(DEBUG=False), Django 기본 로깅이 이 예외를 `AdminEmailHandler`로 `DJANGO_ADMIN_EMAIL`(댓글 알림과 동일 채널)에 자동 발송해, 공격자가 반복적으로 비숫자 `page_id`를 제출하면 운영자 메일함에 노이즈/알림 폭주를 유발할 수 있다(레이트리밋이 IP당 10분/5회로 상한을 두지만, 다중 IP를 쓰면 여전히 유효한 남용 경로다) | `webapp/.harness-tmp/venv_09c_repro/`(신규 venv, dev 설정, 검증 후 삭제)에서 `django.test.Client().post("/comments/submit/", {"page_id": "abc-not-a-number", "author_name": "tester", "body": "hello", "hp_field": ""})` 실행 → `ValueError: Field 'id' expected a number but got 'abc-not-a-number'.`가 `comments/views.py` 46행(`BlogPostPage.published().filter(id=page_id).first()`)에서 발생해 뷰 밖으로 전파됨을 실측 확인(§B-4-6 CSEC-17) | **Medium** | Open | **조치 없이 보고** — 감사자는 코드를 직접 수정하지 않는다(규칙F). 근본 원인은 5단계(`comments/views.py::_get_commentable_post_or_none`)에 있음. 권고 조치안(후속 규칙F 재작업 대상): `page_id`를 조회 전에 `page_id.isdigit()` 또는 `try: page_id = int(page_id) except (TypeError, ValueError): return None`으로 먼저 검증해 비정상 입력을 03 §4가 이미 명시한 "400(형식 오류)" 경로로 정상 처리되게 할 것. 동일 패턴이 있는지 확인하기 위해 5단계는 `blog`/`subscribers` 앱에도 유사한 미검증 정수 ORM 조회가 있는지 함께 재확인 권고(이 addendum은 `comments` 앱 범위만 확인했으므로 타 앱 재확인은 범위 밖) |
+
+**결함 0건이 아님 — 근거**: §B-4의 CSEC-13/CSEC-15/CSEC-17이 각각 Medium/Low/Medium 결함(DEF-09-05/06/07)을 실증했으므로 "결함 없음"으로 판정할 수 없다. 단, 신규 Critical/High는 0건이다.
+
+### B-6-1. 신규 결함의 비즈니스 영향 판단(자의적 축소 금지 원칙 적용)
+- **DEF-09-05(Medium)**: "댓글 몇 개 안 되는 소규모 블로그라 상관없다"는 논리를 적용하지 않는다 — 파기절차(삭제권 이행)는 트래픽 규모와 무관하게 기술적으로 완전해야 한다는 것이 §5.6의 원칙이다. 다만 (a) 사본이 제3자가 아닌 운영자 본인의 메일함에만 머물고, (b) 전송구간이 TLS로 암호화되어 있으며, (c) 댓글 자체가 이미 사전승인제로 방문자에게 공개되기 전 운영자가 내용을 인지하는 구조라 "존재 자체를 몰랐던 유출"은 아니라는 점에서 Critical/High(예: DEF-09-01처럼 필수 방어 자체가 완전히 뚫리는 경우)와는 성격이 다르다고 판단해 Medium으로 확정했다 — 축소가 아니라 실제 노출 범위(운영자 자신)에 근거한 등급이다.
+- **DEF-09-07(Medium)**: 자격증명 탈취나 데이터 유출로 이어지지는 않지만(스택트레이스 미노출, 인증 우회 아님), 신규 코드(REQ-019)가 03 §4 자체 계약("400 형식 오류")을 어기고 예외를 흘려 500+알림폭주로 이어지는 실제 재현 가능한 가용성/운영 노이즈 결함이므로 Low로 축소하지 않고 Medium으로 확정했다.
+
+### B-6-2. 설계서 보안 원칙과 실제 구현의 불일치 (요약, REQ-019 범위)
+- 03 §5.6 파기절차 원칙("Moderators 하드 삭제")이 DEC-049(2026-09-25)로 추가된 `mail_admins` 알림 기능을 반영하지 못해, 실제로는 파기절차의 범위가 설계서가 서술한 것보다 좁다(DEF-09-05의 설계 근거).
+- 03 §5.6 서두 문장 자체가 REQ-019 v1.5 승격 이전 상태로 남아있어 문서 내부 모순이다(DEF-09-06).
+- 03 §4 API 계약("400(형식 오류)")과 `comment_submit`/`comment_form_fragment`의 실제 동작(미검증 `page_id`에 대해 500)이 불일치한다(DEF-09-07의 설계 근거).
+- 그 외(§3.2-1 모더레이션/수집항목/XSS방지/스팸방지/앱경계 원칙)는 실제 구현과 전부 일치함을 §B-4에서 확인했다.
+
+## B-7. 테스트 환경 정리(Teardown) 확인 — 규칙 K
+
+### B-7-0. 작업 시작 전 점검
+```
+$ bash automation/harness-janitor.sh --check
+[janitor] 점검 대상 저장소: C:/big21/vibe-coding/AI-AUTO-WORK
+[janitor] .harness-tmp/ 는 비어있거나 없습니다 — 이상 없음.
+[janitor] 잔여 임시 아티팩트 없음 — 다음 단계 진행 가능.
+EXIT:0
+```
+
+### B-7-1. 이번 addendum에서 생성한 임시 아티팩트 목록
+- `webapp/.harness-tmp/venv_09c_repro/` — 신규 venv(Python 3.13.15, `webapp/requirements.txt` clean install)
+- `webapp/.harness-tmp/repro_pageid.py` — CSEC-17(DEF-09-07) 재현 스크립트
+- 재현 스크립트가 `DiscoverRunner`로 생성한 임시 테스트 DB(인메모리/자동 파기, 별도 파일로 남지 않음)
+
+### B-7-2. 위 아티팩트를 전부 `.harness-tmp/` 하위에서만 생성했는가 (규칙 K 1번)
+**[x] 예.**
+
+### B-7-3. 정리(삭제) 완료 여부
+- `webapp/.harness-tmp/venv_09c_repro/` 삭제 완료.
+- `webapp/.harness-tmp/repro_pageid.py` 삭제 완료.
+- 재현 스크립트 실행 중 `webapp/db.sqlite3`(dev 폴백 파일)가 생성되지 않았음을 확인(`DiscoverRunner`의 임시 테스트 DB만 사용).
+
+### B-7-4. 정리 후 `git status` 실행 결과 (그대로 첨부)
+```
+On branch PROD
+Changes not staged for commit:
+	modified:   .github/workflows/neon-db-backup.yml
+	modified:   docs/harness/03-system-design.md
+	modified:   docs/harness/04-ux-design.md
+	modified:   docs/harness/08-full-system-test.md
+	modified:   docs/harness/10-deploy-test.md
+	modified:   docs/harness/decisions.md
+	modified:   docs/harness/feature-WU-01-integration-test.md
+	modified:   docs/harness/feature-WU-06-integration-test.md
+	modified:   docs/harness/feature-WU-08-integration-test.md
+	modified:   docs/harness/feature-WU-10-integration-test.md
+	modified:   docs/harness/traceability.md
+	modified:   docs/harness/units/unit-01-note.md
+	modified:   docs/harness/units/unit-01-test.md
+	modified:   docs/harness/units/unit-06-note.md
+	modified:   docs/harness/units/unit-06-test.md
+	modified:   docs/harness/units/unit-08-note.md
+	modified:   docs/harness/units/unit-08-test.md
+	modified:   docs/harness/units/unit-10-note.md
+	modified:   docs/harness/units/unit-10-test.md
+	modified:   docs/harness/verify-log_03-system-design.md
+	modified:   docs/harness/verify-log_04-ux-design.md
+	modified:   docs/harness/verify-log_08-full-system-test.md
+	modified:   docs/harness/verify-log_10-deploy-test.md
+	modified:   webapp/.env.example
+	modified:   webapp/blog/templates/blog/blog_post_page.html
+	modified:   webapp/blog/views.py
+	modified:   webapp/config/settings/base.py
+	modified:   webapp/config/static/css/components.css
+	modified:   webapp/config/templates/base.html
+	modified:   webapp/config/urls.py
+	modified:   webapp/core/context_processors.py
+	modified:   webapp/core/tests.py
+	modified:   webapp/legal/templates/legal/legal_page.html
+
+Untracked files:
+	.gitattributes
+	docs/harness/11-admin-manual.md
+	docs/harness/11-api-reference.md
+	docs/harness/11-ops-handoff-runbook.md
+	docs/harness/11-user-manual.md
+	docs/harness/final-comments-feature-verification.md
+	docs/harness/final-content-workflow-verification.md
+	docs/harness/verify-log_11-admin-manual.md
+	docs/harness/verify-log_11-api-reference.md
+	docs/harness/verify-log_11-ops-handoff-runbook.md
+	docs/harness/verify-log_11-user-manual.md
+	webapp/blog/tests.py
+	webapp/comments/
+	webapp/config/static/js/comments.js
+	webapp/core/migrations/0002_initial.py
+	webapp/core/models.py
+	webapp/legal/migrations/0003_add_comment_privacy_notice.py
+	webapp/legal/tests.py
+```
+**해석**: 이 목록은 이번 addendum 세션이 **시작되기 전 스냅샷**(대화 시작 시 제공된 git status, 08단계 addendum §A-7-4가 첨부한 것과 정확히 동일)과 완전히 일치한다 — `webapp/` 아래 어떤 코드 파일도 이번 addendum이 수정하지 않았고(감사자는 코드를 고치지 않는다는 원칙 그대로 준수), 이번 세션이 만든 임시 아티팩트(venv/재현 스크립트)가 흔적 없이 삭제되었음을 직접 증명한다. (이번 addendum이 새로 작성한 `docs/harness/09-security-audit.md`/`docs/harness/verify-log_09-security-audit.md`/`docs/harness/traceability.md`(REQ-019 비고 갱신)는 이 명령 실행 시점 이후 작성되었으므로 위 스냅샷에는 아직 나타나지 않는다 — 정상.)
+
+### B-7-5. 이번 테스트 도중 강제 중단(TaskStop 등)이 있었는가
+**[x] 없음.**
+
+### B-7-6. Teardown 재확인
+```
+$ bash automation/harness-janitor.sh --check
+[janitor] 점검 대상 저장소: C:/big21/vibe-coding/AI-AUTO-WORK
+[janitor] .harness-tmp/ 는 비어있거나 없습니다 — 이상 없음.
+[janitor] 잔여 임시 아티팩트 없음 — 다음 단계 진행 가능.
+EXIT:0
+```
+
+## B-8. 리스크 및 잔존 이슈
+1. **DEF-09-05/06/07(Medium 2건, Low 1건)이 Open으로 남아있다** — Critical/High가 아니므로 10단계 handoff를 막지는 않으나, 후속 규칙F 재작업(5/3단계) 백로그로 반드시 승계해야 한다.
+2. DEF-09-07의 권고 패턴(정수 ID 파라미터 미검증)이 `comments` 앱 외 다른 곳에도 있는지는 이 addendum 범위 밖이다(§B-5) — 5단계 재작업 시 함께 확인 권고.
+3. 원 09단계(§1~§10, 재작업 라운드 2)가 이미 인계한 잔존 이슈(DEF-09-02/03/04, git 이력 재작성 여부·pre-commit 훅 미설치·fail-open dev 폴백)는 이번 addendum과 무관하며 그대로 유지된다(DEC-051이 DEF-09-03을 "현행 유지"로 이미 확정).
+4. 실제 SMTP 발송 성공 여부·실제 배포 환경 네트워크 스캔은 이번에도 미검증으로 이월된다(§B-2).
+
+## B-9. 결론 및 판정
+- [x] **PASS** — 10단계(배포테스트) handoff 가능(Critical/High 결함 0건)
+- [ ] CONDITIONAL PASS
+- [ ] FAIL
+
+**판정 근거**:
+1. 작업 지시가 명시한 7개 점검 항목(인증/인가, 인젝션, 스팸/무차별남용, 개인정보/컴플라이언스, 의존성, 시크릿노출, IDOR/권한우회)을 전부 실측·코드검토로 커버했다(§B-5).
+2. 신규 Critical/High 결함 0건. Medium 2건(DEF-09-05, DEF-09-07)·Low 1건(DEF-09-06)을 발견해 기록했다 — "사용자 수가 적어서/작은 프로젝트라서" 축소 판단하지 않고 실제 재현 근거와 함께 등급을 확정했다(§B-6-1).
+3. Moderators/Editors 권한 경계(CSEC-01/02), XSS/SQLi(CSEC-05~07), 레이트리밋/허니팟(CSEC-08~10), IDOR(CSEC-04)은 전부 실측/코드검토로 PASS 확인했다.
+4. 이메일 미수집이 폼/모델 양쪽에서 실제로 강제됨을 확인했고(CSEC-12), 개인정보처리방침 문구가 실제 수집 항목과 정확히 1:1 대응함을 확인했다(CSEC-11).
+5. 신규 외부 패키지 도입 없음(CSEC-16) — 의존성 CVE/의존성 환각 재스캔 대상 없음, 원 09단계 결과가 그대로 유효.
+6. Teardown 완료(§B-7, 규칙K) — 정리 후 `git status`가 세션 시작 전 스냅샷과 정확히 일치함을 확인했다.
+
+**작업 지시("PASS(또는 Critical/High 없는 CONDITIONAL PASS)가 나와야 10단계로 넘어갈 수 있다")에 따라, 신규 Critical/High가 0건이므로 PASS로 확정하고 10단계(배포테스트)로 handoff한다.** DEF-09-05/06/07(Medium/Low)은 오케스트레이터에게 기록으로만 보고하며(작업 지시: "Low/Medium은 기록만"), 즉시 코드 수정을 요구하지 않는다.
+
+## B-10. 내부 검증 (최소 2회)
+
+- Tier: Standard → 결함 유무와 무관하게 2회 이상 검증 필수.
+- **1차 검증(작성자 관점 자가 재검토)**: 작업 지시가 명시한 7개 점검 항목 전부가 §B-4에 CSEC-ID로 매핑됐는지 체크리스트 대조 — 누락 없음(§B-5). 자가 재검토 도중 "신규 코드의 모든 사용자 제어 입력 경로를 다 훑었는가?"라는 의문이 들어 `comments/views.py`를 처음부터 다시 읽었고, `page_id`가 정수 검증 없이 ORM에 직접 전달되는 지점(41~46행)을 재발견해 즉시 `.harness-tmp/venv_09c_repro/`를 만들어 실측 재현 — **DEF-09-07(Medium)을 신규 발견**. 또한 `mail_admins` 발송 내용을 §5.6 파기절차 문구와 줄 단위로 대조하는 과정에서 **DEF-09-05(Medium)**를, 03 §5.6 서두 문장을 문서 헤더 버전과 대조하는 과정에서 **DEF-09-06(Low)**을 각각 발견해 반영했다(v0→v1).
+- **2차 검증("내가 이 사이트를 노리는 공격자라면 REQ-019(댓글)에서 어디를 먼저 찌를까" 역할전환 관점)**: 1차가 놓쳤을 수 있는 공격 표면을 재검토했다.
+  1. **"댓글 본문에 극단적으로 긴 문자열/이모지/제어문자를 넣으면?"** → `CommentForm.body`가 `max_length=2000`으로 제한(폼 레벨), DB `TextField`는 제한이 없어도 폼이 선행 방어선 — DB 레벨 직접 삽입 경로가 없으므로(웹 폼이 유일한 쓰기 경로) 추가 결함 아님으로 판단.
+  2. **"`comment_write_page`의 `slug` 파라미터로 다른 앱의 페이지를 가리켜 크로스 콘텐츠 댓글을 유발할 수 있는가?"** → `get_object_or_404(BlogPostPage.published(), slug=slug)`가 `BlogPostPage`로 모델을 한정하므로 다른 Page 타입(LegalPage 등)의 slug로는 404가 남을 확인(코드 확인, 반복 실행 없이 QuerySet 모델 한정으로 논리 확인).
+  3. **"레이트리밋이 IP 기준이라 대형 봇넷 앞에서 무력화되지 않는가?"** → 03 §3.2-1이 이미 "사전 승인제가 최종 방어선"이라고 명시했고, 봇이 초당 수백 건을 보내도 `pending` 상태로만 쌓일 뿐 공개 노출은 Moderators 승인 전에는 발생하지 않음 — 봇넷 시나리오에서도 공개 노출/XSS/정보유출로 이어지는 경로는 없음(운영 부담 증가라는 별개의 리스크는 있으나 신규 보안 결함은 아님, 기존에 이미 인지된 사전승인제 트레이드오프의 연장).
+  4. **"DEF-09-07을 악용해 실제로 얻을 수 있는 것은 무엇인가(과장 여부 재점검)?"** → 인증 우회/데이터 유출 불가, 얻을 수 있는 것은 (a) 500 에러 발생, (b) 운영자 메일함 노이즈 뿐 — Critical/High로 승격할 근거가 없음을 재확인, Medium이 적절.
+  5. **"문서만 보고 10단계 담당자가 추가 질문 없이 착수할 수 있는가?"** → §B-9에 최종 판정과 handoff 가능 상태를, §B-8에 Medium/Low 잔존 이슈를 명확히 인계했다.
+  - 결과: 1차·2차 모두 신규 Critical/High 결함 없음. 1차에서 발견한 Medium 2건·Low 1건은 그대로 유지, 2차에서 추가로 발견된 신규 결함 없음.
+- 검증 로그 파일 경로: `docs/harness/verify-log_09-security-audit.md`("재작업 addendum" 절, append)
+
+## 절차 흐름 (참고용 다이어그램, addendum)
+
+```mermaid
+flowchart TD
+    A["08단계 addendum PASS: REQ-019(comments) 전체조립 E2E 완료<br/>단, 보안 카테고리 점검은 갭으로 인계"] --> B["comments 앱 인증/인가·인젝션·스팸방지 점검(B-4-1~3)"]
+    B --> C["개인정보 컴플라이언스 + 설계서 일치 점검(B-4-4)"]
+    C --> D["의존성/시크릿(B-4-5) + 자체발견 입력검증(B-4-6)"]
+    D --> E{Critical/High 결함?}
+    E -->|No, Medium/Low만 발견| F["내부검증 1차/2차: 공격자 관점 재검토(B-10)"]
+    F -->|결함 없음| G["PASS 확정(B-9)<br/>DEF-09-05/06/07은 기록만, 10단계로 handoff"]
+```

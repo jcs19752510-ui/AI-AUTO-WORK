@@ -24,12 +24,14 @@ load_dotenv(BASE_DIR / ".env")
 INSTALLED_APPS = [
     "core",
     "blog",
+    "comments",
     "custom_images",
     "legal",
     "subscribers",
     "home",
     "wagtail.contrib.forms",
     "wagtail.contrib.redirects",
+    "wagtail.contrib.settings",
     "wagtail.contrib.sitemaps",
     "wagtail.embeds",
     "wagtail.sites",
@@ -89,6 +91,10 @@ TEMPLATES = [
                 "blog.context_processors.nav_categories",
                 # REQ-005(SEO) canonical URL — DEC-017 정규 URL 설계와 정합 (WU-05)
                 "core.context_processors.canonical_url",
+                # 03 §3.1/§5.6 SiteSettings.contact_email — 개인정보처리방침
+                # "문의처" 절 등에서 실제 연락처를 노출하기 위함 (규칙F 재작업,
+                # 2026-09-25, DEC-045)
+                "core.context_processors.contact_email",
             ],
         },
     },

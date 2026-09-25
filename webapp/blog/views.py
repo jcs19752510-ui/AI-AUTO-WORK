@@ -40,6 +40,11 @@ def post_detail(request, slug):
         "faq_json_ld": post.get_faq_json_ld(),
         "og_image_rendition": og_image_rendition,
         "og_image_url": og_image_url,
+        # REQ-019(댓글, v1.5) — 승인된 댓글만(03 §3.2-1). 이 페이지가
+        # cache_page로 캐시되므로 새 댓글이 반영되기까지 최대
+        # VIEW_CACHE_SECONDS만큼 지연될 수 있다(기존 캐시 정책과 동일,
+        # DEC-012).
+        "approved_comments": post.comments.filter(status="approved"),
     }
     return render(request, "blog/blog_post_page.html", context)
 

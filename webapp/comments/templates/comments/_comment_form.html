@@ -1,0 +1,52 @@
+{% comment %}
+CommentForm 컴포넌트 (REQ-019, 04-ux-design.md §4).
+
+`comment_form_fragment` 뷰(캐시 안 됨)가 매 요청마다 새로 렌더링하므로
+`{% csrf_token %}`이 항상 방문자 본인의 쿠키와 일치한다(subscribers의
+_newsletter_form.html과 동일 원칙, subscribers/views.py 모듈 docstring 참고).
+{% endcomment %}
+<form
+  class="comment-form"
+  method="post"
+  action="{% url 'comments:submit' %}"
+  data-comment-form
+  novalidate
+>
+  {% csrf_token %}
+  <input type="hidden" name="page_id" value="{{ post.id }}">
+
+  <div class="form-field">
+    <label for="comment-author-{{ post.id }}">이름</label>
+    <input
+      type="text"
+      id="comment-author-{{ post.id }}"
+      name="author_name"
+      required
+      maxlength="100"
+      aria-describedby="comment-author-error-{{ post.id }}"
+    >
+    <p id="comment-author-error-{{ post.id }}" class="form-field__error" data-field="author_name" role="alert" hidden></p>
+  </div>
+
+  <div class="form-field">
+    <label for="comment-body-{{ post.id }}">댓글</label>
+    <textarea
+      id="comment-body-{{ post.id }}"
+      name="body"
+      required
+      maxlength="2000"
+      rows="4"
+      aria-describedby="comment-body-error-{{ post.id }}"
+    ></textarea>
+    <p id="comment-body-error-{{ post.id }}" class="form-field__error" data-field="body" role="alert" hidden></p>
+  </div>
+
+  {% comment %}허니팟(03 §3.2-1) — subscribers와 동일한 접근성 처리.{% endcomment %}
+  <div class="comment-form__hp" aria-hidden="true">
+    <label for="comment-hp-{{ post.id }}">이 필드는 비워 두세요</label>
+    <input type="text" id="comment-hp-{{ post.id }}" name="hp_field" tabindex="-1" autocomplete="off">
+  </div>
+
+  <button type="submit" class="button button--primary">댓글 남기기</button>
+  <p class="comment-form__status" data-comment-status role="status" aria-live="polite"></p>
+</form>

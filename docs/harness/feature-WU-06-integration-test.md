@@ -183,3 +183,11 @@ flowchart TD
     H --> I["PASS(8절) → traceability.md 갱신(10절)"]
     I --> J["정리 확인(10.1) → WU-07 착수 가능"]
 ```
+
+---
+
+## 부록 — 재작업 라운드 2 (규칙F, `contact_email` 소비, 2026-09-25)
+
+- **트리거**: `unit-06-note.md` §10(`SiteSettings.contact_email` 신설 및 legal 템플릿 반영, DEC-045).
+- **07단계 관점 재확인**: 이번 변경은 legal_page.html에 조건부 블록 하나를 추가한 것이며, WU-01/04/05와의 기존 경계(캐노니컬 URL, 헤더/네비, HTTPS 리다이렉트)를 전혀 건드리지 않는다(diff 확인: `legal_page.html`만 변경, `legal/tests.py` 신규 추가). `page.slug` 분기로 다른 두 법적 페이지(약관/쿠키)에 영향이 없음을 06단계 부록이 이미 실측했으므로 반복하지 않는다.
+- **판정**: PASS — 신규 결함 없음. 8단계 재실행 불필요(근거: `unit-08-note.md` §10). 다음은 11단계(문서 반영, 이미 진행됨 — 아래 참고).

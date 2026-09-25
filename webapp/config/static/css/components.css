@@ -698,3 +698,108 @@ main {
 .error-page .button {
   margin-top: var(--space-5);
 }
+
+/* ---- CommentList/CommentForm (REQ-019, 04 §4, v1.3) ---- */
+.comment-list {
+  max-width: 640px;
+  margin: var(--space-6) 0;
+}
+
+.comment-list__items {
+  list-style: none;
+  padding: 0;
+  margin: var(--space-4) 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.comment-list__item {
+  padding: var(--space-4);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+}
+
+.comment-list__meta {
+  display: flex;
+  gap: var(--space-2);
+  font-size: var(--type-small-size);
+  color: var(--color-text-muted);
+  margin: 0 0 var(--space-1);
+}
+
+.comment-list__author {
+  font-weight: 600;
+  color: var(--color-text);
+}
+
+.comment-list__body {
+  margin: 0;
+}
+
+.comment-list__empty {
+  color: var(--color-text-muted);
+}
+
+.comment-form,
+.comment-write-page form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 480px;
+  margin: var(--space-6) 0;
+  padding: var(--space-5);
+  background: var(--color-bg-subtle);
+  border-radius: var(--radius-md);
+}
+
+.comment-form .form-field input[type="text"],
+.comment-form .form-field textarea,
+.comment-write-page .form-field input[type="text"],
+.comment-write-page .form-field textarea {
+  width: 100%;
+  min-height: 44px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  font-size: var(--type-body-size);
+  font-family: inherit;
+}
+
+.comment-form .form-field input[type="text"]:focus-visible,
+.comment-form .form-field textarea:focus-visible,
+.comment-write-page .form-field input[type="text"]:focus-visible,
+.comment-write-page .form-field textarea:focus-visible {
+  outline: 2px solid var(--color-focus-ring);
+  outline-offset: 2px;
+}
+
+.comment-form__hp {
+  position: absolute;
+  left: -9999px;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+}
+
+.comment-form__status {
+  font-size: var(--type-small-size);
+  min-height: 1.2em;
+}
+
+.comment-form__status--success {
+  color: var(--color-success);
+}
+
+.comment-form__status--error {
+  color: var(--color-error);
+}
+
+.comment-form__status--submitting {
+  color: var(--color-text-muted);
+}
+
+.inline-alert--info {
+  background: var(--color-bg-subtle);
+  color: var(--color-text-muted);
+}

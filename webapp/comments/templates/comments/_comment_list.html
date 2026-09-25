@@ -1,0 +1,27 @@
+{% comment %}
+CommentList 컴포넌트 (REQ-019, 04-ux-design.md §2 S-02/§4).
+
+`post.comments.filter(status="approved")`만 노출한다(사전승인제, 03
+§3.2-1) — 승인 대기(`pending`)/거부(`rejected`) 댓글은 이 목록에 절대
+나타나지 않는다. 읽기 전용 목록이라 CSRF와 무관하므로 다른 페이지 콘텐츠와
+함께 캐시되어도 안전하다(폼만 캐시 문제가 있음, _comment_slot.html 참고).
+{% endcomment %}
+<section class="comment-list" aria-label="댓글">
+  <h2 class="comment-list__title">댓글 {{ approved_comments|length }}개</h2>
+  {% if approved_comments %}
+  <ol class="comment-list__items">
+    {% for comment in approved_comments %}
+    <li class="comment-list__item">
+      <p class="comment-list__meta">
+        <span class="comment-list__author">{{ comment.author_name }}</span>
+        <time datetime="{{ comment.created_at|date:'c' }}">{{ comment.created_at|date:"Y년 n월 j일" }}</time>
+      </p>
+      {% comment %}Django auto-escape + linebreaks만 사용 — mark_safe/|safe 금지(03 §3.2-1 XSS 방지 원칙).{% endcomment %}
+      <p class="comment-list__body">{{ comment.body|linebreaks }}</p>
+    </li>
+    {% endfor %}
+  </ol>
+  {% else %}
+  <p class="comment-list__empty">아직 댓글이 없습니다. 첫 댓글을 남겨보세요.</p>
+  {% endif %}
+</section>

@@ -1,0 +1,20 @@
+{% comment %}
+CommentForm 자리표시자(REQ-019) — `@cache_page`가 걸린 게시물 상세 페이지에
+포함되는 쪽은 이 슬롯뿐이다. 실제 폼(과 그 안의 `{% csrf_token %}`)은 절대
+이 슬롯에 직접 렌더링하지 않는다(subscribers/_newsletter_slot.html과
+동일한 이유).
+
+- JS 있음: static/js/comments.js가 `data-comment-fragment-url`을 fetch해
+  이 슬롯 안을 항상-새로 렌더링된 폼으로 채운다(페이지 이동 없음).
+- JS 없음: `<noscript>` 링크가 캐시되지 않는 전용 페이지로 보낸다(04 §0).
+{% endcomment %}
+<div
+  class="comment-form-slot"
+  data-comment-slot
+  data-comment-page-id="{{ post.id }}"
+  data-comment-fragment-url="{% url 'comments:form_fragment' %}"
+>
+  <noscript>
+    <p><a class="button button--secondary" href="{% url 'comments:write_page' post.slug %}">댓글 작성하기</a></p>
+  </noscript>
+</div>

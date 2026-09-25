@@ -103,3 +103,12 @@ flowchart TD
     E -->|No| G["verification-log 2회 PASS(9절)"]
     G --> H["PASS 판정 → 7단계(통합테스트) 진행"]
 ```
+
+---
+
+## 부록 — 재작업 라운드 2 (규칙F, DEF-10-03, 2026-09-25)
+
+- **신규 AC**: `unit-10-note.md` §10이 서술한 조치(client 설치를 PGDG 저장소 기반으로 교체)에 대해, 10단계가 실측했던 정확한 실패 조건("Ubuntu 기본 저장소 client < Neon 서버 메이저 버전")을 Docker로 재현 후 수정 효과를 검증(TC-EXT-07 상당).
+- **실행 결과**: `unit-10-note.md` §10 인용 — 수정 전(`pg_dump 16.15` vs `postgres:17`) → `server version mismatch`로 실패 재현(원본 TC-013과 동일 실패 재확인) / 수정 후(`pg_dump 18.6` vs `postgres:17`) → 백업 성공, 데이터 무결성 확인. YAML 문법(`yaml.safe_load`) 파싱 정상.
+- **회귀**: 나머지 6개 워크플로 스텝은 diff 대상이 아님(변경 없음) — 원본 AC1~9/TC-EXT-01~06이 검증한 로직에 영향 없음.
+- **판정**: PASS — DEF-10-03(10단계 지적)에 대한 조치가 원본이 재현했던 정확한 실패 조건에서 실측으로 해소됨을 확인. 다음 단계는 7단계(`feature-WU-10-integration-test.md`) addendum.

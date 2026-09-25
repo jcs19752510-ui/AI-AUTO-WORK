@@ -11,7 +11,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.cache import cache
 from django.core.management import call_command
-from django.test import Client, RequestFactory, TestCase
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from config.middleware import XForwardedForMiddleware
@@ -373,3 +373,42 @@ class EnsureSuperuserCommandTests(TestCase):
         )
         self.assertFalse(User.objects.filter(username="weak-admin").exists())
         self.assertIn("비밀번호 정책", output)
+
+
+@override_settings(
+    SECURE_SSL_REDIRECT=True,
+    SECURE_REDIRECT_EXEMPT=[r"^healthz$"],
+)
+class HealthzHttpsRedirectExemptTests(TestCase):
+    """DEF-10-01(10단계 배포테스트, TC-004) 회귀 방지 테스트.
+
+    production.py는 `SECURE_SSL_REDIRECT=True` + `SECURE_REDIRECT_EXEMPT=[r"^healthz$"]`
+    조합으로 `/healthz`만 HTTPS 강제 리다이렉트에서 예외 처리한다(Render 헬스체크
+    프로브가 X-Forwarded-Proto 헤더 없이 직접 접속해도 301 대신 200을 받게 하기
+    위함). `Client()`를 `override_settings` 적용 범위 안에서 생성해야
+    `SecurityMiddleware`가 이 설정값으로 다시 초기화된다(Django의
+    `ClientHandler`는 인스턴스 생성 시점에 미들웨어 체인을 로드하므로, 이미
+    만들어진 Client를 재사용하면 override가 반영되지 않는다)."""
+
+    def setUp(self):
+        self.client = Client()
+
+    def test_healthz_returns_200_without_forwarded_proto_header(self):
+        response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"ok")
+
+    def test_non_exempt_path_still_redirected_to_https(self):
+        """대조군 — 예외 목록에 없는 경로는 여전히 301로 HTTPS 강제되어야
+        한다(SECURE_REDIRECT_EXEMPT가 전역이 아니라 healthz 한정임을 확인)."""
+        response = self.client.get("/robots.txt")
+        self.assertEqual(response.status_code, 301)
+        self.assertTrue(response["Location"].startswith("https://"))
+
+    def test_healthz_with_forwarded_proto_https_also_200(self):
+        """`X-Forwarded-Proto: https` 헤더가 붙어 오는 경우(Render 엣지를 거친
+        일반 트래픽 재현)에도 여전히 200이어야 한다 — 예외 처리가 헤더 유무와
+        무관하게 항상 성립하는지 확인(회귀 방지, 헤더 존재가 예외 로직을
+        깨지 않음을 명시적으로 남김)."""
+        response = self.client.get("/healthz", HTTP_X_FORWARDED_PROTO="https")
+        self.assertEqual(response.status_code, 200)

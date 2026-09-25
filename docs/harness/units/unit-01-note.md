@@ -20,6 +20,15 @@
 - **재검증 결과**: 아래 §4-1 "재작업 로컬 검증" 참고. 07단계(`feature-WU-01-integration-test.md`)는 이 코드 변경을 입력으로 IT-02/IT-03을 재실행해 PASS로 갱신해야 한다(이번 05단계 산출물 완료 후 06 → 07 순서로 재트리거).
 - **별도 DEC 필요 여부**: 없음. 설계 결정 자체는 이미 DEC-015(decisions.md)로 기록되어 있고, 이번 구현 중 새로운 비가역적 판단은 발생하지 않았다(미들웨어를 dev에 넣지 않기로 한 판단은 03 §5.5.4의 "신뢰할 수 있는 단일 홉" 전제를 그대로 따른 것이지, 새로운 아키텍처 결정이 아니므로 별도 DEC 미기록).
 
+### 0-2. 재작업 이력 (규칙 F, 라운드 2 — DEF-10-01, 2026-09-25)
+
+- **근거**: `docs/harness/10-deploy-test.md`(10단계 배포테스트) TC-004가 CONDITIONAL PASS 조건 1번으로 지목한 **DEF-10-01(High)** — `/healthz`가 `X-Forwarded-Proto: https` 헤더 없이 요청되면 `SECURE_SSL_REDIRECT=True`에 의해 301로 리다이렉트되어, Render 헬스체크 프로브가 이 헤더 없이 직접 접속하는 경우 최초 배포가 영구히 헬스체크 실패로 막힐 수 있는 리스크. 10단계는 근본 원인을 "03 §4(healthz 계약, WU-08 소유)와 §5.5.2(HTTPS 강제, WU-01 소유)가 서로를 참조하지 않은 설계 공백(3단계)"으로 지목했다.
+- **코드 상태 확인**: 이번 05단계 착수 시점에 `webapp/config/settings/production.py`를 직접 열람한 결과, 10단계가 권고했던 조치(a) `SECURE_REDIRECT_EXEMPT = [r"^healthz$"]`가 **이미 77행에 반영되어 있음**을 확인했다(`git blame` → 커밋 `bcc17a2d7`, 2026-09-18, 10단계 결과서와 같은 날짜). 즉 코드 수정 자체는 이전에 이미 이루어졌으나, ①이 변경에 대응하는 회귀 테스트가 없었고, ②이 unit note/`decisions.md`/`03-system-design.md`/`10-deploy-test.md`에 그 사실이 전혀 기록되지 않아 "10단계 CONDITIONAL PASS 미해결 조건"으로 계속 남아 있던 하네스 기록 공백(rule F 3·4번 절차 누락) 상태였다. 이번 라운드는 코드를 다시 고치는 것이 아니라 **①회귀 테스트 추가, ②하네스 기록을 실제 코드 상태와 일치시키는 것**이 작업 범위다.
+- **회귀 테스트 추가**: `webapp/core/tests.py`에 `HealthzHttpsRedirectExemptTests`(3케이스) 신규 추가 — `override_settings(SECURE_SSL_REDIRECT=True, SECURE_REDIRECT_EXEMPT=[r"^healthz$"])` 범위 안에서 `Client()`를 새로 생성해(Django `ClientHandler`가 인스턴스 생성 시점에 미들웨어를 재구성하므로 override가 실제로 반영됨을 실측 확인) `SecurityMiddleware`가 이 설정을 실제로 적용하는지 검증한다: (1) 헤더 없이 `/healthz` → 200, (2) 예외 목록에 없는 `/robots.txt` → 여전히 301(전역 우회가 아님을 대조 확인), (3) `X-Forwarded-Proto: https` 헤더가 있어도 `/healthz` → 200. 3케이스 전부 PASS(§4-2 참고).
+- **설계서(03) 갱신**: `03-system-design.md`를 v1.3 → v1.4로 갱신해 §5.5.2에 healthz 예외를 정식 반영하고, 근본 원인이었던 §4↔§5.5.2 미상호참조를 해소했다(DEC-044).
+- **재검증 결과**: §4-2(신규) 참고. `manage.py test`(전체 38케이스) 회귀 없음 확인.
+- **별도 DEC 필요 여부**: 있음 — DEC-044(decisions.md)로 이번 라운드 전체(01/10 두 유닛에 걸친 DEF-10-01/DEF-10-03 재작업)를 통합 기록.
+
 ## 1. 구현 범위
 
 Wagtail/Django 프로젝트 코드 기반 골격 전체(다른 모든 WU의 선행 조건)를 `webapp/` 하위에 신규 생성했다. 실제로 만든 파일:
@@ -106,6 +115,15 @@ docs/harness/decisions.md       DEC-013(디렉터리 배치), DEC-014(Django 5.2
 - **회귀 확인**: `DJANGO_SETTINGS_MODULE=config.settings.production manage.py check` → "System check identified no issues". `DJANGO_SETTINGS_MODULE=config.settings.dev`로 `manage.py check`/`makemigrations --check --dry-run` → 이상 없음, "No changes detected"(dev 경로에 회귀 없음 확인 — `base.py`를 건드리지 않았으므로 예상된 결과).
 - **정리**: 검증 후 `.venv_it2`, `db.sqlite3`, `staticfiles/`, `media/`, `__pycache__/`를 전부 삭제해 `webapp/`를 소스 코드만 남긴 상태로 복원했다(`find webapp -type f`로 25개 파일 — 기존 24개 + 신규 `config/middleware.py` 1개 — 확인).
 
+### 4-2. 재작업(규칙F, 라운드2) 로컬 검증 (2026-09-25, DEF-10-01 대응)
+
+`webapp/.harness-tmp/venv_05_def10fix`(임시 venv, 규칙K 준수)에 `requirements.txt`를 설치하고 `DJANGO_SETTINGS_MODULE=config.settings.dev`로 `manage.py test`를 실행했다.
+
+- `core.tests.HealthzHttpsRedirectExemptTests`(신규 3케이스) 개별 실행 → `Ran 3 tests in 0.032s / OK`. 세 케이스 전부 §0-2에 서술한 시나리오(예외 경로 200 / 비예외 경로 301 유지 / 헤더 있어도 200) 그대로 통과.
+- 전체 회귀: `manage.py test`(인자 없음, 프로젝트 전체) → `Ran 38 tests in 156.730s / OK`(core 26 + subscribers 12). 08단계(`08-full-system-test.md` SYS-04)가 기록한 29개(core 17+subscribers 12)보다 core가 9개 늘어난 것은 이번 3개 신규 테스트 + 09단계 재작업 라운드2(DEF-09-01, `RateLimitedAdminLoginView`)가 이미 추가해 둔 테스트가 반영된 결과이며, 신규 실패는 0건.
+- `manage.py check` → "System check identified no issues (0 silenced)."
+- **정리(규칙K)**: 검증 후 `.harness-tmp/venv_05_def10fix` 삭제, `automation/harness-janitor.sh --check` 재실행 → "잔여 임시 아티팩트 없음" 확인. `git status --short` 결과 이번 라운드가 건드린 파일만 남음(`webapp/core/tests.py`, `.github/workflows/neon-db-backup.yml`) — `production.py`는 이번에 수정하지 않았으므로(§0-2 참고, 이미 반영되어 있었음) diff에 나타나지 않는다.
+
 ## 5. 게이트 1 — 정적 분석/린트
 
 저장소 전체(`AI-AUTO-WORK` 루트 포함)에 Python용 lint/type-check/formatter 설정(`pyproject.toml`, `.flake8`, `ruff.toml`, `.pre-commit-config.yaml` 등)이 **존재하지 않는다** — 직접 검색해 확인했으며, 있는데 건너뛴 것이 아니라 애초에 설정 자체가 없다. 대체 수단으로 `python -m py_compile`을 모든 신규 `.py` 파일에 대해 실행했고 전부 구문 오류 없이 통과했다.
@@ -177,7 +195,12 @@ docs/harness/decisions.md       DEC-013(디렉터리 배치), DEC-014(Django 5.2
 
 **재작업 이전**: 이 노트 작성 완료 후 6단계(`06-unit-tester`) 호출을 트리거했었다.
 
-**재작업 이후(이번 라운드)**: 이번 05단계 코드 수정 완료 후, 규칙F-3(하위 단계 재실행 의무)에 따라 아래 순서로 재트리거해야 한다.
+**재작업 이후(1라운드)**: 이번 05단계 코드 수정 완료 후, 규칙F-3(하위 단계 재실행 의무)에 따라 아래 순서로 재트리거해야 한다.
 1. 6단계(`06-unit-tester`) — 위 §9-1(13~18번)을 신규 인수 조건으로 포함해 재검증(기존 §9의 1~12번은 이번 변경으로 영향받지 않으므로 회귀만 확인).
 2. 7단계(`07-integration-tester`) — `feature-WU-01-integration-test.md`의 IT-02/IT-03을 재실행해 200으로 해소되는지 확정한 뒤 문서를 PASS로 갱신.
 3. 8단계(전체 풀테스트)는 위 1~2가 PASS로 완료되기 전까지 시작할 수 없다(규칙 D, 단계 게이트 — `feature-WU-01-integration-test.md` §8 4항과 동일).
+
+**재작업 이후(2라운드, DEF-10-01, §0-2/§4-2)**: 코드는 이미 반영되어 있었으므로 이번 라운드가 새로 만든 것은 회귀 테스트뿐이다. 규칙F-3에 따라 아래를 재확인해야 한다.
+1. 6단계 — `unit-01-test.md`에 `HealthzHttpsRedirectExemptTests` 3케이스를 신규 AC로 추가 반영(본 노트 §4-2 결과 인용 가능, 반복 실행 불필요).
+2. 7단계 — `feature-WU-01-integration-test.md`에 DEF-10-01 해소 사실을 반영하는 짧은 addendum 추가(TC-004 재현 시나리오가 이미 07 범위의 "production 유사 설정" 검증과 동일 조건이므로 반복 실행보다는 참조로 충분, 필요 시 재확인).
+3. 10단계 — `10-deploy-test.md` §9 CONDITIONAL PASS 조건 1번 해소 처리(별도 재작업 addendum).

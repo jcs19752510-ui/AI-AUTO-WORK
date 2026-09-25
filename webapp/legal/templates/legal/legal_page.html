@@ -32,5 +32,9 @@
   <div class="legal-page__body article-body">
     {{ body_html }}
   </div>
+
+  {% if page.slug == "privacy-policy" and contact_email %}
+  <p class="legal-page__contact">문의처 이메일: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
+  {% endif %}
 </article>
 {% endblock %}

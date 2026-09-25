@@ -66,10 +66,22 @@ jobs:
             exit 1
           fi
 
-      - name: Install PostgreSQL client (pg_dump)
+      - name: Install PostgreSQL client (pg_dump) — PGDG 최신판 사용
+        # DEF-10-03(10단계 배포테스트, High→Medium): ubuntu-latest 기본 apt
+        # 저장소의 postgresql-client는 Neon 실서버 PostgreSQL 메이저 버전보다
+        # 낮을 수 있고, pg_dump는 자신보다 "더 새로운" 서버를 지원하지 않는다
+        # (공식 문서: pg_dump는 자신과 같거나 더 낮은 서버 버전만 안전하게
+        # 지원). 기본 apt 대신 PostgreSQL 공식 APT 저장소(PGDG,
+        # apt.postgresql.org)를 등록해 항상 최신 메이저 버전의 postgresql-client를
+        # 설치하면, Neon이 어떤 최신 PostgreSQL 메이저 버전을 쓰든 client가
+        # server보다 뒤처지는 경우가 구조적으로 없어진다.
         run: |
+          set -euo pipefail
           sudo apt-get update
+          sudo apt-get install --yes postgresql-common
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
           sudo apt-get install --yes postgresql-client
+          pg_dump --version
 
       - name: Dump Neon PostgreSQL and compress
         env:

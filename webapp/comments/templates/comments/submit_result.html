@@ -1,0 +1,25 @@
+{% extends "base.html" %}
+{% comment %}
+무-JS 폴백 결과 페이지(subscribers/subscribe_result.html과 동일 역할).
+static/js/comments.js가 폼 제출을 가로채면 이 템플릿은 렌더링되지 않는다
+— comment_submit이 비-AJAX로 직접 호출되는 드문 경로(JS 있음 + fetch 실패
+등)에서만 보인다. 일반적인 무-JS 경로는 comment_write_page.html이 직접
+처리해 이 템플릿을 거치지 않는다.
+{% endcomment %}
+
+{% block title %}댓글 제출{% endblock %}
+
+{% block content %}
+<div class="comment-submit-result">
+  {% if success %}
+  <p class="inline-alert inline-alert--success">댓글이 접수되었습니다. 검토 후 게시됩니다.</p>
+  {% elif rate_limited %}
+  <p class="inline-alert inline-alert--error">요청이 너무 잦습니다. 잠시 후 다시 시도해주세요.</p>
+  {% else %}
+  <p class="inline-alert inline-alert--error">입력 내용을 다시 확인해 주세요.</p>
+  {% endif %}
+  {% if redirect_url %}
+  <a class="button button--secondary" href="{{ redirect_url }}">돌아가기</a>
+  {% endif %}
+</div>
+{% endblock %}
