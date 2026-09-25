@@ -10,17 +10,17 @@ git config --global user.name "정찬성"
 # 4. 내 컴퓨터와 인터넷 창고 주소를 연결합니다.
 git remote add origin https://github.com/jcs19752510-ui/AI-AUTO-WORK.git
 
-# 5. 깃허브에 있는 main이나 PROD_SCH 같은 브랜치 정보들을 내 컴퓨터가 인식하게 됩니다.
+# 5. 깃허브에 있는 main이나 PROD 같은 브랜치 정보들을 내 컴퓨터가 인식하게 됩니다.
 git fetch origin
 
-# 6. PROD_SCH 모두 데이터 로컬로 내리기
-git pull origin PROD_SCH
+# 6. PROD 모두 데이터 로컬로 내리기
+git pull origin PROD
 
-# 7. 현재 브랜치명을 'PROD_SCH'으로 브랜치 생성
-git branch PROD_SCH
+# 7. 현재 브랜치명을 'PROD'으로 브랜치 생성
+git branch PROD
 
-# 8. PROD_SCH 브랜치로 작업 공간을 이동 (Switch)
-git switch PROD_SCH
+# 8. PROD 브랜치로 작업 공간을 이동 (Switch)
+git switch PROD
 
 # 9. 로컬 소스 추가할 목록 add
 git add .
@@ -29,7 +29,7 @@ git add .
 git commit -m "AI 자동화 작업 프로그램"
 
 # 11. 로컬 commit한 항목 리모트 브랜치에 push
-git push origin PROD_SCH
+git push origin PROD
 
 # 12. 원격소스 로컬 브랜치에 내리기
-git pull origin PROD_SCH
+git pull origin PROD
