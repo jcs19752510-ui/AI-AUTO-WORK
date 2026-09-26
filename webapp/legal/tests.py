@@ -57,3 +57,41 @@ class PrivacyPolicyContactEmailTests(TestCase):
         response = self.client.get("/cookies/")
         self.assertEqual(response.status_code, 200)
         self.assertNotIn(b"legal-page__contact", response.content)
+
+
+class CookiesPageAdsenseNoticeTests(TestCase):
+    """DEC-053 — 쿠키 사용 고지 페이지의 애드센스 광고 쿠키 안내가
+    adsense_client_id 설정 여부에 따라 정확히 켜지고 꺼지는지 확인한다."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.site = Site.objects.get(is_default_site=True)
+
+    def _set_client_id(self, value):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = value
+        settings_obj.save()
+
+    def test_no_notice_when_unset(self):
+        response = self.client.get("/cookies/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"legal-page__adsense-note", response.content)
+        # DEC-053 이전 문구("추적 쿠키를 사용하지 않습니다")는 더 이상
+        # 존재하지 않아야 한다 — 0004 마이그레이션이 실제로 적용됐는지 확인.
+        self.assertNotIn("추적 쿠키를 사용하지 않습니다".encode(), response.content)
+
+    def test_notice_rendered_when_set(self):
+        self._set_client_id("ca-pub-1234567890123456")
+        response = self.client.get("/cookies/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"legal-page__adsense-note", response.content)
+        self.assertIn("Google AdSense".encode(), response.content)
+
+    def test_notice_not_shown_on_privacy_policy_page(self):
+        """광고 쿠키 상세 안내는 쿠키 고지 페이지에만 노출된다(개인정보처리
+        방침은 기존처럼 쿠키 고지 페이지로 위임하는 구조를 유지)."""
+        self._set_client_id("ca-pub-1234567890123456")
+        response = self.client.get("/privacy-policy/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"legal-page__adsense-note", response.content)

@@ -95,6 +95,9 @@ TEMPLATES = [
                 # "문의처" 절 등에서 실제 연락처를 노출하기 위함 (규칙F 재작업,
                 # 2026-09-25, DEC-045)
                 "core.context_processors.contact_email",
+                # SiteSettings.adsense_client_id — base.html 광고 스크립트,
+                # legal_page.html 광고 쿠키 안내에서 사용 (DEC-053, 2026-09-26)
+                "core.context_processors.adsense_client_id",
             ],
         },
     },

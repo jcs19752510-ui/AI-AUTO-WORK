@@ -75,6 +75,17 @@
         {# Override this in templates to add extra stylesheets #}
         {% endblock %}
 
+        {% comment %}
+        DEC-053 — SiteSettings.adsense_client_id가 비어 있으면(애드센스
+        계정 발급 전 기본 상태) 아무것도 렌더링하지 않는다. 값이 채워지면
+        이 스크립트 한 줄만으로 Google Auto ads가 광고 위치를 자동으로
+        잡는다 — 수동 광고 슬롯 배치는 실제 계정 발급 이후 별도 검토(모델
+        docstring 참고).
+        {% endcomment %}
+        {% if adsense_client_id %}
+        <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client={{ adsense_client_id }}" crossorigin="anonymous"></script>
+        {% endif %}
+
         {% block extra_head %}
         {# REQ-005/017 — 게시물 상세 템플릿이 여기에 JSON-LD(BlogPosting/FAQPage)를 삽입한다 #}
         {% endblock %}

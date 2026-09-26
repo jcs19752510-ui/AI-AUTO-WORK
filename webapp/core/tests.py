@@ -16,6 +16,8 @@ from django.urls import reverse
 
 from config.middleware import XForwardedForMiddleware
 from core.admin_auth import RATE_LIMIT_MAX_ATTEMPTS, RateLimitedLoginView
+from core.models import SiteSettings
+from wagtail.models import Site
 
 User = get_user_model()
 
@@ -412,3 +414,71 @@ class HealthzHttpsRedirectExemptTests(TestCase):
         깨지 않음을 명시적으로 남김)."""
         response = self.client.get("/healthz", HTTP_X_FORWARDED_PROTO="https")
         self.assertEqual(response.status_code, 200)
+
+
+class AdsTxtTests(TestCase):
+    """DEC-053 — ads.txt는 adsense_client_id가 비어 있으면 404, 채워지면
+    구글이 요구하는 형식(`google.com, pub-<id>, DIRECT, f08c47fec0942fa0`)
+    으로 응답해야 한다. legal/tests.py의 contact_email 테스트와 동일하게
+    캐시를 매번 초기화한다(같은 프로세스에서 값을 바꿔가며 검증하므로)."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.site = Site.objects.get(is_default_site=True)
+
+    def _set_client_id(self, value):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = value
+        settings_obj.save()
+
+    def test_404_when_unset(self):
+        response = self.client.get("/ads.txt")
+        self.assertEqual(response.status_code, 404)
+
+    def test_200_with_expected_line_when_set(self):
+        self._set_client_id("ca-pub-1234567890123456")
+        response = self.client.get("/ads.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/plain")
+        self.assertEqual(
+            response.content.decode(),
+            "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0",
+        )
+
+    def test_value_without_ca_prefix_still_works(self):
+        """운영자가 'ca-' 접두어 없이 붙여넣는 실수를 해도 500이 나지 않고
+        그 값을 그대로 게시자 ID로 취급한다(관대한 입력 처리)."""
+        self._set_client_id("pub-9999999999999999")
+        response = self.client.get("/ads.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.content.decode(),
+            "google.com, pub-9999999999999999, DIRECT, f08c47fec0942fa0",
+        )
+
+
+class AdsenseScriptTagTests(TestCase):
+    """DEC-053 — base.html의 애드센스 스크립트 태그가 adsense_client_id
+    설정 여부에 따라 정확히 켜지고 꺼지는지 확인한다."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.site = Site.objects.get(is_default_site=True)
+
+    def _set_client_id(self, value):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = value
+        settings_obj.save()
+
+    def test_no_script_tag_when_unset(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"adsbygoogle.js", response.content)
+
+    def test_script_tag_rendered_when_set(self):
+        self._set_client_id("ca-pub-1234567890123456")
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"adsbygoogle.js?client=ca-pub-1234567890123456", response.content)

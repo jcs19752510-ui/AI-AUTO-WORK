@@ -36,5 +36,14 @@
   {% if page.slug == "privacy-policy" and contact_email %}
   <p class="legal-page__contact">문의처 이메일: <a href="mailto:{{ contact_email }}">{{ contact_email }}</a></p>
   {% endif %}
+
+  {% comment %}
+  DEC-053 — adsense_client_id가 비어 있으면(애드센스 계정 발급 전 기본
+  상태) 렌더링하지 않는다. 값이 채워진 뒤에만 노출되므로, "광고를 게재할
+  수 있다"는 문구가 실제로 광고 스크립트가 삽입된 시점과 항상 일치한다.
+  {% endcomment %}
+  {% if page.slug == "cookies" and adsense_client_id %}
+  <p class="legal-page__adsense-note">이 사이트는 Google AdSense를 통해 광고를 게재합니다. Google 및 광고 파트너는 광고 개인화·게재 빈도 제한을 위해 별도의 광고 쿠키(예: <code>_gads</code>, <code>__gpi</code>)를 사용할 수 있으며, 보관 기간은 Google 정책에 따라 최대 13개월입니다. 맞춤 광고를 원하지 않으시면 <a href="https://adssettings.google.com/" target="_blank" rel="noopener">Google 광고 설정</a>에서 직접 끌 수 있습니다.</p>
+  {% endif %}
 </article>
 {% endblock %}

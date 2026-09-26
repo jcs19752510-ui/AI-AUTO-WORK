@@ -12,11 +12,28 @@ from functools import wraps
 
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import PermissionDenied
-from django.http import HttpResponse
+from django.http import HttpResponse, HttpResponseNotFound
 from django.shortcuts import render
 from django.urls import reverse
 
 from . import monitoring
+
+
+def ads_txt(request):
+    """DEC-053 — 애드센스 게시자 확인용 `ads.txt`(구글 공식 요구사항).
+    `adsense_client_id`가 비어 있으면 404를 반환한다 — 애드센스 계정이
+    아직 없는 지금 상태에서는 이 파일 자체가 존재하지 않는 게 맞는
+    동작이다(값이 없다고 500이 나서는 안 된다는 원칙은 지키되, robots.txt
+    처럼 "항상 200"이어야 할 이유는 없는 파일이라 404가 정확하다)."""
+    from core.models import SiteSettings
+
+    client_id = SiteSettings.for_request(request).adsense_client_id
+    if not client_id:
+        return HttpResponseNotFound()
+
+    publisher_id = client_id[len("ca-"):] if client_id.startswith("ca-") else client_id
+    line = f"google.com, {publisher_id}, DIRECT, f08c47fec0942fa0"
+    return HttpResponse(line, content_type="text/plain")
 
 
 def robots_txt(request):
