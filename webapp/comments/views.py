@@ -21,7 +21,7 @@ from blog.models import BlogPostPage
 
 from .constants import RATE_LIMIT_MAX_ATTEMPTS, RATE_LIMIT_WINDOW_SECONDS
 from .forms import CommentForm
-from .models import Comment
+from .models import BlockedIP, Comment
 from .notifications import notify_new_comment
 from .utils import mask_ip
 
@@ -36,6 +36,13 @@ def _is_rate_limited(ip):
         cache.set(key, 1, timeout=RATE_LIMIT_WINDOW_SECONDS)
         count = 1
     return count > RATE_LIMIT_MAX_ATTEMPTS
+
+
+def _is_blocked(ip):
+    """DEC-055 — 수동/자동으로 등록된 차단 목록(`BlockedIP`) 확인. 레이트
+    리밋보다 먼저 확인해 차단된 IP가 레이트리밋 카운터·알림 메일 등 어떤
+    부가 처리도 소모하지 않게 한다."""
+    return BlockedIP.is_blocked(ip)
 
 
 def _get_commentable_post_or_none(page_id):
@@ -60,12 +67,17 @@ def _get_commentable_post_or_none(page_id):
 def _create_pending_comment(post, author_name, body, ip):
     """댓글 저장 + 운영자 알림(사용자 요청, 2026-09-25)을 한 곳에서
     처리한다 — comment_submit/comment_write_page 두 제출 경로가 동일하게
-    호출해 중복을 피한다."""
+    호출해 중복을 피한다.
+
+    `source_ip_raw`(DEC-055)도 함께 저장한다 — 어드민 화면에는 안 보이지만
+    (models.py panels 미포함), 이 값이 없으면 반복거부 자동차단 판정 자체가
+    불가능하다."""
     comment = Comment.objects.create(
         page=post,
         author_name=author_name,
         body=body,
         source_ip_masked=mask_ip(ip),
+        source_ip_raw=ip or None,
         status=Comment.STATUS_PENDING,
     )
     notify_new_comment(comment)
@@ -96,6 +108,12 @@ def _respond(request, is_ajax, status, *, form=None, success=False, rate_limited
 def comment_submit(request):
     is_ajax = request.headers.get("X-Requested-With") == "XMLHttpRequest"
     ip = request.META.get("REMOTE_ADDR", "")
+
+    # DEC-055 — 차단된 IP는 레이트리밋보다도 먼저 걸러낸다. 허니팟과 동일하게
+    # 200 성공 위장 응답을 주고 실제 저장은 하지 않는다(차단 사실을 공격자가
+    # 알아채 우회를 시도하지 못하게 함).
+    if _is_blocked(ip):
+        return _respond(request, is_ajax, 200, success=True)
 
     # 레이트리밋을 폼 검증보다 먼저 확인한다(subscribers와 동일 원칙 — 03 §5.3).
     if _is_rate_limited(ip):
@@ -138,6 +156,11 @@ def comment_write_page(request, slug):
 
     if request.method == "POST":
         ip = request.META.get("REMOTE_ADDR", "")
+
+        # DEC-055 — comment_submit과 동일한 차단 판정을 무-JS 경로에도 적용한다.
+        if _is_blocked(ip):
+            return redirect(post.url + "?comment_submitted=1")
+
         if _is_rate_limited(ip):
             return render(request, "comments/submit_result.html", {"rate_limited": True, "redirect_url": post.url}, status=429)
 

@@ -10,3 +10,14 @@
 
 RATE_LIMIT_MAX_ATTEMPTS = 5
 RATE_LIMIT_WINDOW_SECONDS = 600
+
+# 반복 거부 자동차단(DEC-055, 사용자 요청) — 같은 IP에서 온 댓글이
+# AUTO_BLOCK_WINDOW_DAYS 이내에 AUTO_BLOCK_REJECTION_THRESHOLD번 "거부됨"
+# 처리되면 자동으로 AUTO_BLOCK_DURATION_DAYS 동안 차단한다. 로그인
+# 레이트리밋(core/admin_auth.py)이 계정이 아니라 IP·일정 시간 자동해제를
+# 택한 것과 동일한 이유로, 사람이 검토하지 않은 자동 판정은 영구가 아니라
+# 기간을 둔다 — 실제 스팸 패턴이 관측되면 조정한다(rate limit 값과 동일한
+# "일단 시작하고 관측 후 조정" 원칙, comments/constants.py 기존 주석 참고).
+AUTO_BLOCK_REJECTION_THRESHOLD = 3
+AUTO_BLOCK_WINDOW_DAYS = 30
+AUTO_BLOCK_DURATION_DAYS = 30

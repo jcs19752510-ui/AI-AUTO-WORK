@@ -4,6 +4,7 @@
 회귀 테스트로 남겨 6단계 테스터가 그대로 재실행할 수 있게 한다.
 """
 
+from datetime import timedelta
 from unittest import mock
 
 from django.contrib.auth import get_user_model
@@ -17,8 +18,12 @@ from django.utils import timezone
 from blog.models import BlogPostPage, Category
 from wagtail.models import Page
 
-from .constants import RATE_LIMIT_MAX_ATTEMPTS
-from .models import Comment
+from .constants import (
+    AUTO_BLOCK_DURATION_DAYS,
+    AUTO_BLOCK_REJECTION_THRESHOLD,
+    RATE_LIMIT_MAX_ATTEMPTS,
+)
+from .models import BlockedIP, Comment
 
 User = get_user_model()
 
@@ -417,3 +422,201 @@ class CommentKoreanSlugTests(TestCase):
         )
         self.assertEqual(response.status_code, 200)
         self.assertTrue(Comment.objects.filter(author_name="한글슬러그테스터").exists())
+
+
+class BlockedIPModelTests(TestCase):
+    """DEC-055 — `BlockedIP.is_blocked()` 판정 로직 자체를 확인한다."""
+
+    def test_no_entry_means_not_blocked(self):
+        self.assertFalse(BlockedIP.is_blocked("203.0.113.9"))
+
+    def test_permanent_entry_blocks(self):
+        BlockedIP.objects.create(ip_address="203.0.113.9", reason="수동 차단 테스트")
+        self.assertTrue(BlockedIP.is_blocked("203.0.113.9"))
+
+    def test_future_expiry_still_blocks(self):
+        BlockedIP.objects.create(
+            ip_address="203.0.113.9",
+            is_auto=True,
+            expires_at=timezone.now() + timedelta(days=1),
+        )
+        self.assertTrue(BlockedIP.is_blocked("203.0.113.9"))
+
+    def test_past_expiry_no_longer_blocks(self):
+        BlockedIP.objects.create(
+            ip_address="203.0.113.9",
+            is_auto=True,
+            expires_at=timezone.now() - timedelta(minutes=1),
+        )
+        self.assertFalse(BlockedIP.is_blocked("203.0.113.9"))
+
+    def test_different_ip_not_affected(self):
+        BlockedIP.objects.create(ip_address="203.0.113.9")
+        self.assertFalse(BlockedIP.is_blocked("203.0.113.10"))
+
+
+class CommentSubmissionBlockedIPTests(TestCase):
+    """DEC-055 — 차단된 IP는 허니팟과 동일하게 200 위장 응답만 받고 실제
+    저장은 되지 않아야 한다(comment_submit/comment_write_page 양쪽 경로)."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        home = Page.objects.get(depth=2).specific
+        category = Category.objects.create(name="공지2", slug="notice-2")
+        self.post = BlogPostPage(
+            title="차단 테스트 글", slug="blocked-ip-test-post", category=category, live=False
+        )
+        home.add_child(instance=self.post)
+        self.post.save_revision().publish()
+        self.post.refresh_from_db()
+        BlockedIP.objects.create(ip_address="198.51.100.7", reason="테스트용 수동 차단")
+
+    def test_comment_submit_fakes_success_for_blocked_ip(self):
+        response = self.client.post(
+            reverse("comments:submit"),
+            {
+                "page_id": self.post.id,
+                "author_name": "차단된사용자",
+                "body": "이 댓글은 저장되면 안 됩니다.",
+                "hp_field": "",
+            },
+            REMOTE_ADDR="198.51.100.7",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Comment.objects.filter(author_name="차단된사용자").exists())
+
+    def test_comment_write_page_skips_save_for_blocked_ip(self):
+        url = reverse("comments:write_page", args=[self.post.slug])
+        response = self.client.post(
+            url,
+            {"author_name": "차단된사용자2", "body": "저장되면 안 됩니다.", "hp_field": ""},
+            REMOTE_ADDR="198.51.100.7",
+        )
+        self.assertEqual(response.status_code, 302)  # 정상 제출과 동일하게 리다이렉트(위장)
+        self.assertFalse(Comment.objects.filter(author_name="차단된사용자2").exists())
+
+    def test_non_blocked_ip_still_works(self):
+        """대조군 — 차단 목록에 없는 IP는 평소처럼 정상 저장된다."""
+        response = self.client.post(
+            reverse("comments:submit"),
+            {
+                "page_id": self.post.id,
+                "author_name": "정상사용자",
+                "body": "정상적으로 저장되어야 합니다.",
+                "hp_field": "",
+            },
+            REMOTE_ADDR="203.0.113.55",
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(Comment.objects.filter(author_name="정상사용자").exists())
+
+
+class AutoBlockRepeatOffenderTests(TestCase):
+    """DEC-055 — 같은 IP에서 온 댓글이 임계치만큼 "거부됨" 처리되면
+    자동으로 `BlockedIP`가 생성되는지 확인한다(comments/signals.py)."""
+
+    def setUp(self):
+        cache.clear()
+        home = Page.objects.get(depth=2).specific
+        category = Category.objects.create(name="공지3", slug="notice-3")
+        self.post = BlogPostPage(
+            title="자동차단 테스트 글", slug="auto-block-test-post", category=category, live=False
+        )
+        home.add_child(instance=self.post)
+        self.post.save_revision().publish()
+        self.post.refresh_from_db()
+        self.offender_ip = "192.0.2.55"
+
+    def _reject_new_comment(self, n):
+        comment = Comment.objects.create(
+            page=self.post,
+            author_name=f"스팸봇{n}",
+            body="스팸성 댓글",
+            source_ip_masked="192.0.2.0",
+            source_ip_raw=self.offender_ip,
+            status=Comment.STATUS_PENDING,
+        )
+        comment.status = Comment.STATUS_REJECTED
+        comment.save()
+        return comment
+
+    def test_not_blocked_before_threshold(self):
+        for n in range(AUTO_BLOCK_REJECTION_THRESHOLD - 1):
+            self._reject_new_comment(n)
+        self.assertFalse(BlockedIP.is_blocked(self.offender_ip))
+
+    def test_auto_blocked_at_threshold(self):
+        for n in range(AUTO_BLOCK_REJECTION_THRESHOLD):
+            self._reject_new_comment(n)
+        self.assertTrue(BlockedIP.is_blocked(self.offender_ip))
+        entry = BlockedIP.objects.get(ip_address=self.offender_ip)
+        self.assertTrue(entry.is_auto)
+        self.assertIsNotNone(entry.expires_at)
+        # 만료 시각이 대략 AUTO_BLOCK_DURATION_DAYS 뒤인지(초 단위 오차 허용) 확인.
+        expected = timezone.now() + timedelta(days=AUTO_BLOCK_DURATION_DAYS)
+        self.assertLess(abs((entry.expires_at - expected).total_seconds()), 60)
+
+    def test_approved_rejections_do_not_count_across_unrelated_ip(self):
+        """대조군 — 다른 IP의 거부 이력은 이 IP의 임계치에 영향을 주지 않는다."""
+        other_ip = "192.0.2.99"
+        for n in range(AUTO_BLOCK_REJECTION_THRESHOLD - 1):
+            Comment.objects.create(
+                page=self.post,
+                author_name=f"다른스팸봇{n}",
+                body="다른 IP 스팸",
+                source_ip_raw=other_ip,
+                status=Comment.STATUS_REJECTED,
+            )
+        self.assertFalse(BlockedIP.is_blocked(other_ip))
+        self.assertFalse(BlockedIP.is_blocked(self.offender_ip))
+
+    def test_auto_blocked_ip_then_actually_blocked_from_submitting(self):
+        """자동차단이 실제 제출 경로(comment_submit)에도 적용되는지 end-to-end 확인."""
+        for n in range(AUTO_BLOCK_REJECTION_THRESHOLD):
+            self._reject_new_comment(n)
+
+        client = Client()
+        response = client.post(
+            reverse("comments:submit"),
+            {
+                "page_id": self.post.id,
+                "author_name": "재시도스팸봇",
+                "body": "또 시도합니다.",
+                "hp_field": "",
+            },
+            REMOTE_ADDR=self.offender_ip,
+        )
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(Comment.objects.filter(author_name="재시도스팸봇").exists())
+
+
+class BlockedIPPermissionTests(TestCase):
+    """DEC-055 — Moderators만 차단 목록을 관리할 수 있고, Editors는 없어야
+    한다(0004 마이그레이션이 실제로 부여한 권한을 실행 시점에 재확인)."""
+
+    def test_moderators_can_manage_blockedip(self):
+        moderator = User.objects.create_user(username="mod-bip-1", password="unused", is_staff=True)
+        moderator.groups.add(Group.objects.get(name="Moderators"))
+        self.assertTrue(moderator.has_perm("comments.add_blockedip"))
+        self.assertTrue(moderator.has_perm("comments.change_blockedip"))
+        self.assertTrue(moderator.has_perm("comments.delete_blockedip"))
+        self.assertTrue(moderator.has_perm("comments.view_blockedip"))
+
+    def test_editors_cannot_manage_blockedip(self):
+        editor = User.objects.create_user(username="editor-bip-1", password="unused", is_staff=True)
+        editor.groups.add(Group.objects.get(name="Editors"))
+        self.assertFalse(editor.has_perm("comments.add_blockedip"))
+        self.assertFalse(editor.has_perm("comments.change_blockedip"))
+
+
+class PrivacyPolicyCommentIPBlocklistNoticeTests(TestCase):
+    """0005 마이그레이션 — 개인정보처리방침에 원본 IP 보관 목적(스팸 자동
+    차단)이 실제로 반영됐는지 확인한다."""
+
+    def test_privacy_policy_mentions_ip_blocklist_purpose(self):
+        cache.clear()
+        response = self.client.get("/privacy-policy/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("반복 거부 자동차단".encode(), response.content)
+        self.assertIn("운영자 화면에는 노출되지".encode(), response.content)

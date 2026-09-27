@@ -24,10 +24,22 @@ SDK 연동)이 Out-of-Scope에서 해제됐다. 사용자가 아직 애드센스
 (과설계 방지, contact_email과 동일한 선례).
 """
 
+from django.core.validators import RegexValidator
 from django.db import models
 
 from wagtail.admin.panels import FieldPanel
 from wagtail.contrib.settings.models import BaseSiteSetting, register_setting
+
+# DEC-056(WU-13/14 사후 보안점검) — 자유 텍스트로 열어두면 운영자가 개행
+# 문자 등을 실수로 붙여넣었을 때 ads.txt 응답 본문이 깨지거나(줄 삽입),
+# Auto ads 스크립트 로딩이 조용히 실패할 수 있다. XSS 자체는 Django
+# 자동이스케이프로 이미 막혀 있음을 실측 확인했지만(SEC-26 참고), 형식
+# 오류는 별개 문제라 서버 측에서도 형식을 강제한다 — 어드민 폼의 "잘못된
+# 입력을 조용히 저장하지 않는다"는 일반 원칙에 맞춘 방어적 조치.
+_ADSENSE_CLIENT_ID_VALIDATOR = RegexValidator(
+    regex=r"^ca-pub-\d+$",
+    message="ca-pub-로 시작하고 숫자만 이어지는 형식이어야 합니다(예: ca-pub-1234567890123456).",
+)
 
 
 @register_setting
@@ -44,6 +56,7 @@ class SiteSettings(BaseSiteSetting):
     adsense_client_id = models.CharField(
         max_length=32,
         blank=True,
+        validators=[_ADSENSE_CLIENT_ID_VALIDATOR],
         help_text=(
             "Google 애드센스 게시자 ID(예: ca-pub-1234567890123456). 애드센스 "
             "심사 승인 후 발급받은 값을 그대로 붙여넣는다. 비워두면 광고 "

@@ -10,6 +10,7 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
 from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
@@ -482,3 +483,48 @@ class AdsenseScriptTagTests(TestCase):
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
         self.assertIn(b"adsbygoogle.js?client=ca-pub-1234567890123456", response.content)
+
+    def test_malicious_value_is_html_escaped_not_executed(self):
+        """DEC-056 보안점검(SEC-26) — 어드민 필드에 스크립트 삽입을 시도해도
+        Django 자동이스케이프로 무력화되는지 실측 확인한다(자유 텍스트 필드에
+        `full_clean()`을 거치지 않는 `.save()`로 값을 직접 넣어, 폼 검증보다
+        더 관대한 경로로도 렌더링 단계에서 안전한지 확인)."""
+        payload = 'ca-pub-1"><script>alert(1)</script>'
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = payload
+        settings_obj.save()
+
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"<script>alert(1)</script>", response.content)
+        self.assertIn(b"&lt;script&gt;alert(1)&lt;/script&gt;", response.content)
+
+
+class AdsenseClientIdValidationTests(TestCase):
+    """DEC-056 — 형식이 이상한 값은 어드민 폼(모델 `full_clean()`) 단계에서
+    저장 자체가 거부되어야 한다(ads.txt 응답 오염/스크립트 로딩 실패 예방)."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+
+    def test_valid_format_passes_full_clean(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = "ca-pub-1234567890123456"
+        settings_obj.full_clean()  # 예외 없이 통과해야 함
+
+    def test_blank_passes_full_clean(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = ""
+        settings_obj.full_clean()
+
+    def test_embedded_newline_rejected(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = "ca-pub-123\nEvilLine"
+        with self.assertRaises(ValidationError):
+            settings_obj.full_clean()
+
+    def test_missing_prefix_rejected(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = "pub-1234567890123456"
+        with self.assertRaises(ValidationError):
+            settings_obj.full_clean()

@@ -2,6 +2,7 @@
 
 > **최종 판정 갱신(규칙F 재작업 라운드 2 완료, 2026-09-18)**: 아래 §1~§10(원본, 2026-09-17 작성)은 **FAIL**로 판정했었다 — `DEF-09-01`(High, `/django-admin/login/` 무차별대입 방어 완전 우회)을 실측으로 발견했기 때문이다. 이후 규칙F 재작업 체인(3단계 설계 v1.3/DEC-040 → 5단계 WU-09 라운드 2/DEC-041 → 6단계 `unit-09-test.md` 재검증 PASS → 7단계 `feature-WU-09-integration-test.md` 재검증 PASS, 구독자 하드삭제 E2E까지 확인)이 순서대로 완료되었고, **이 문서 맨 아래 "재작업 라운드 2(DEF-09-01) 재검증" 절이 그 체인의 마지막 단계(9단계)로서, 하위 단계의 PASS 주장을 그대로 신뢰하지 않고 독립적으로 직접 재현**했다. 결론: **DEF-09-01 Fixed 확인, 신규 Critical/High 없음 → 최종 판정 PASS로 갱신**. 원본 §1~§10은 최초 발견 당시 기록 그대로 보존하며(수정하지 않음), 최신 판정 근거는 문서 맨 아래 라운드 2 절을 따른다.
 > **재작업 addendum 추가(2026-09-25) — REQ-019(댓글) 보안검증**: 08단계 재작업 addendum(`08-full-system-test.md`, PASS)이 명시적으로 인계한 갭 — 신규 `comments` 앱(REQ-019)이 위 §1~§10/재작업 라운드 2(WU-01~10 범위)가 완료된 **이후**에 추가되어 정식 보안 카테고리 전수 점검(인증/인가, 인젝션, 시크릿, 의존성, 개인정보 컴플라이언스)을 아직 받지 않은 상태였다 — 를 메우기 위해 이 문서 맨 아래에 **"재작업 addendum — REQ-019(댓글) 보안검증"** 절을 append했다. 결론: **신규 Critical/High 결함 없음, Medium 2건·Low 1건 신규 발견(기록만, 비차단) → PASS**. 위 §1~§10 및 "재작업 라운드 2" 절(모두 WU-01~10 범위)은 원문 그대로 보존한다.
+> **재작업 addendum 추가(2026-09-27) — WU-13/14(애드센스 준비·댓글 스팸 차단) 보안검증**: 하네스 파이프라인 밖(사용자 대화)에서 진행된 WU-13(DEC-053/054)·WU-14(DEC-055)가 자체 내부검증만 거치고 이 문서의 정식 체크리스트는 받지 않은 상태였음을 사용자에게 투명 보고 후, 동일 체크리스트를 신규/변경 파일에 한정 재적용했다(DEC-056). 결론: **신규 Critical/High 결함 없음, Low 1건 발견 즉시 수정(`adsense_client_id` 형식 미검증) → PASS**. 신규 회귀 테스트 5건 추가, 전체 스위트 114/114 PASS(183.8초) 확인.
 
 ## 1. 개요
 - 테스트 대상: **전체 코드베이스(`webapp/` 전체) + 설계서(`docs/harness/03-system-design.md` §5) + 의사결정 로그(`decisions.md` DEC-001~038) + git 이력 전체**. WU-01~10(REQ-001~017 In-Scope) 전부를 대상으로 한 보안 관점 재검토.
@@ -656,3 +657,47 @@ flowchart TD
     E -->|No, Medium/Low만 발견| F["내부검증 1차/2차: 공격자 관점 재검토(B-10)"]
     F -->|결함 없음| G["PASS 확정(B-9)<br/>DEF-09-05/06/07은 기록만, 10단계로 handoff"]
 ```
+
+---
+
+# 재작업 addendum — WU-13/14(애드센스 준비·댓글 스팸 차단) 보안검증 (2026-09-27)
+
+> 이 절은 하네스 파이프라인 밖(사용자와의 대화)에서 진행된 WU-13(애드센스 연동 준비, DEC-053/054)과 WU-14(댓글 스팸 자동/수동 차단, DEC-055)를 대상으로, 위 REQ-019 addendum과 동일한 방법론(정식 09단계 체크리스트를 신규/변경 파일에 한정 재적용)을 적용한다. WU-01~10/REQ-019 범위(위 §1~§10, 재작업 라운드 2, REQ-019 addendum)는 이미 PASS로 확정되어 있으므로 반복하지 않는다(규칙B 레이어별 책임 분리).
+
+## C-1. 테스트 대상 및 범위
+
+- **In-Scope 파일**: `core/models.py`(`adsense_client_id`), `core/context_processors.py`, `core/views.py`(`ads_txt`), `core/urls.py`, `config/templates/base.html`, `legal/templates/legal/legal_page.html`, `legal/migrations/0004~0005`, `comments/models.py`(`source_ip_raw`, `BlockedIP`), `comments/signals.py`, `comments/apps.py`, `comments/views.py`, `comments/constants.py`
+- **Out-of-Scope**: 콘텐츠 파일럿(20개 블로그 글 데이터)은 코드 변경이 아니라 데이터 시딩이므로 이 보안점검 범위가 아니다(별도 `test-report_content-pilot-20articles.md`가 다룸).
+- **트리거**: 사용자가 "보안 개발 다 된 거죠?"라고 확인 요청 → 정식 감사 미실시 사실을 투명 보고 → 사용자가 "계속 진행해주세요"로 이 점검을 승인.
+
+## C-2. 테스트 케이스 및 결과
+
+| ID | 시나리오 | 절차 | 예상 결과 | 실제 결과 | 판정 |
+|----|----------|------|-----------|-----------|------|
+| SEC-26 | XSS — `adsense_client_id`를 통한 `<script>` 속성 이스케이프 우회 시도 | `ca-pub-1"><script>alert(1)</script>` 값을 실제로 저장(`.save()`, 폼 검증 우회 경로 포함)한 뒤 홈페이지 응답 본문을 직접 검사 | `<script>alert(1)</script>`가 실행 가능한 형태로 나타나지 않아야 함 | Django 자동이스케이프가 `"`→`&quot;`, `<`→`&lt;`, `>`→`&gt;`로 치환 — 원문 그대로는 응답에 없음(실측 확인, `core.tests.AdsenseScriptTagTests.test_malicious_value_is_html_escaped_not_executed`) | PASS |
+| SEC-27 | 권한경계 — `SiteSettings`(애드센스 ID 포함) 수정 권한 | Moderators/Editors 그룹 사용자로 `has_perm('core.change_sitesettings')` 실측 | 두 그룹 모두 `False`(슈퍼유저만 가능)여야 함 — 광고 설정은 1인 운영 원칙상 최고 신뢰 등급 작업 | 둘 다 `False` 확인(Wagtail 기본 정책, 별도 권한 부여 마이그레이션 없음이 곧 안전한 기본값) | PASS |
+| SEC-28 | 권한경계 — `BlockedIP` 스니펫 CRUD | `comments.tests.BlockedIPPermissionTests` 결과 인용(반복 실행 안 함, 필수 원칙) | Moderators만 가능, Editors 불가 | WU-14 자체 테스트에서 이미 실측 PASS | PASS(인용) |
+| SEC-29 | SQL Injection 표면 | 신규/변경 파일 전수 grep: `.raw(`, `cursor.execute`, `.extra(`, `RawSQL` | 0건 | 0건(No matches found) | PASS |
+| SEC-30 | 원본 IP(`source_ip_raw`) 어드민 화면 미노출 확인 | `comments/models.py` `Comment.panels` 목록에 `source_ip_raw`가 포함되어 있는지 코드 검토 | 미포함이어야 함(설계 의도) | 미포함 확인 | PASS |
+| SEC-31 | 차단된 IP에게 차단 사실이 노출되는지(정보 누출) | `comment_submit`/`comment_write_page`의 차단 분기 응답을 허니팟 분기 응답과 대조 | 두 경로가 동일한 위장 성공 응답을 반환해야 함 | 코드 검토로 확인 — 둘 다 200/302 "성공"과 동일한 사용자 경험, 별도 오류 코드·문구 없음 | PASS |
+| SEC-32 | `ads.txt` 응답 본문 형식 오염 가능성 | `adsense_client_id`에 개행 문자 등 비정상 값을 넣고 `full_clean()` 시도 | 형식이 `^ca-pub-\d+$`가 아니면 저장 자체가 거부되어야 함(신규 발견 시 즉시 조치) | **최초 실측 시 결함 발견** — 형식 검증이 없어 개행 포함 값도 저장 가능했음. `RegexValidator` 추가(DEC-056) 후 재실측 → 거부됨 확인 | **DEF-09-04(Low) → 즉시 Fixed** |
+
+## C-3. 결함 목록
+
+| ID | 설명 | 심각도 | 상태 | 조치 |
+|----|------|--------|------|------|
+| DEF-09-04 | `SiteSettings.adsense_client_id`에 형식 검증이 없어, 개행 문자 등을 포함한 값을 저장하면 `ads.txt` 응답 본문이 오염되거나 Auto ads 스크립트 로딩이 조용히 실패할 수 있음. 공격 가능성은 없음(필드 자체가 슈퍼유저 전용, SEC-27로 확인) — 설정 실수 방지 목적 | Low | **Fixed**(발견 즉시) | `RegexValidator(r"^ca-pub-\d+$")` 추가(`core/models.py`), `core/migrations/0004_add_adsense_client_id_format_validator.py`, 회귀 테스트 4건 추가(`AdsenseClientIdValidationTests`) |
+
+이 addendum에서 신규로 발견한 Critical/High 결함은 없다. 위 §6의 기존 Open 항목(DEF-09-02 git 이력 잔재, DEF-09-03 fail-open 설정 폴백)은 이번 점검 범위(WU-13/14 신규 파일)와 무관해 재평가하지 않고 원 상태(Low, Open/Deferred)를 유지한다.
+
+## C-4. 내부 검증 (최소 2회)
+
+**1차(작성자 관점)**: SEC-26~32 전 항목을 코드 검토+실측으로 직접 수행. DEF-09-04를 발견해 즉시 조치. 조치 후 `core`(36건) 단독 재실행 PASS 확인.
+
+**2차(독립 심사자 관점 — "이 결과를 오늘 처음 받은 보안 심사자라면")**: (1) SEC-27 실측이 "권한이 없다"는 소극적 사실만 확인했는지, 아니면 실제로 신뢰할 수 있는 수준(슈퍼유저만)인지 재검토 — 기존 구독자 관리 화면도 동일하게 슈퍼유저 전용으로 운영 중임을 대조해 일관성 확인. (2) DEF-09-04 수정이 기존 정상 값(`ca-pub-1234567890123456` 등 실제 애드센스 ID 형식)을 오탐으로 거부하지 않는지 `AdsenseClientIdValidationTests.test_valid_format_passes_full_clean`으로 재확인. (3) 이번 점검이 다루지 않은 것(콘텐츠 데이터, 실배포 환경 변수)을 §8 권고에 명시적으로 남겼는지 확인. → 신규 결함 없음.
+
+## C-5. 최종 판정
+
+- [x] **PASS** — 신규 Critical/High 결함 없음, 발견된 Low 1건 즉시 Fixed. 전체 회귀 테스트 114/114 PASS(183.8초, `manage.py test` 전체 실행). 다음 단계(실배포 시 재확인 권장)로 handoff 가능.
+
+관련 문서: `docs/harness/decisions.md` DEC-056, `docs/harness/test-report_wu13-adsense-prep.md`, `docs/harness/test-report_wu14-comment-spam-defense.md`, `webapp/core/tests.py`(`AdsenseClientIdValidationTests` 등)
