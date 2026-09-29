@@ -488,16 +488,25 @@ class AdsenseScriptTagTests(TestCase):
         """DEC-056 보안점검(SEC-26) — 어드민 필드에 스크립트 삽입을 시도해도
         Django 자동이스케이프로 무력화되는지 실측 확인한다(자유 텍스트 필드에
         `full_clean()`을 거치지 않는 `.save()`로 값을 직접 넣어, 폼 검증보다
-        더 관대한 경로로도 렌더링 단계에서 안전한지 확인)."""
-        payload = 'ca-pub-1"><script>alert(1)</script>'
+        더 관대한 경로로도 렌더링 단계에서 안전한지 확인).
+
+        페이로드는 `adsense_client_id`의 실제 `max_length=32` 이내로 맞춘다
+        — SQLite는 VARCHAR 길이를 타입 힌트로만 취급해 강제하지 않지만,
+        실제 배포 대상인 Postgres는 DB 레이어에서 엄격히 강제한다(2026-09-29,
+        로컬 Postgres 전환 중 실측 발견). 32자를 넘기면 이 테스트가 검증하려는
+        "템플릿 자동이스케이프" 단계에 도달하기도 전에 DB가 `DataError`로
+        `.save()` 자체를 거부해, Postgres에서는 이 테스트가 의도와 달리
+        햇갈리게 실패한다(실제로는 더 안전한 상태 — DB 제약이 먼저 막아주는
+        것 — 인데 테스트 자체가 그 상태를 확인하지 못하는 것뿐)."""
+        payload = 'ca-pub-1"><script>x</script>'
         settings_obj = SiteSettings.for_site(self.site)
         settings_obj.adsense_client_id = payload
         settings_obj.save()
 
         response = self.client.get("/")
         self.assertEqual(response.status_code, 200)
-        self.assertNotIn(b"<script>alert(1)</script>", response.content)
-        self.assertIn(b"&lt;script&gt;alert(1)&lt;/script&gt;", response.content)
+        self.assertNotIn(b"<script>x</script>", response.content)
+        self.assertIn(b"&lt;script&gt;x&lt;/script&gt;", response.content)
 
 
 class AdsenseClientIdValidationTests(TestCase):

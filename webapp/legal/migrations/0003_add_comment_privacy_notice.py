@@ -17,6 +17,20 @@
 # 이력으로 추적할 수 있게 하기 위함 — 03 §3.2 LegalPage 설명이 이미
 # "리비전 기능을 그대로 활용해 방침 변경 이력이 자동으로 남는다"고
 # 명시한 이점을 실제로 살린다).
+#
+# DEF-10-06(Critical, 10단계 addendum 2026-09-28 발견) 수정: 실제 모델의
+# `.publish()`는 검색색인 갱신 시그널을 발생시켜 `wagtailsearch_indexentry`
+# 테이블에 INSERT를 시도한다. `wagtailsearch` 앱에 대한 명시적 의존성이
+# 없으면 Django 마이그레이션 위상정렬이 이 테이블 생성(wagtailsearch
+# 0005_create_indexentry, 이후 0006/0010이 스키마를 추가로 변경)보다 이
+# 마이그레이션을 먼저 배치할 수 있고, 그러면 INSERT가 "관계가 존재하지
+# 않음" 오류로 실패한다. Postgres에서는 이 실패가 트랜잭션을 abort
+# 상태로 만들어 이후 모든 SQL이 연쇄 크래시하지만(SQLite는 마이그레이션별
+# autocommit이라 이 문제가 로컬 개발(SQLite)에서는 드러나지 않았다),
+# 실제 배포 대상인 Neon(Postgres)에서는 100% 재현된다(10단계 §13.4 실측).
+# `wagtailsearch`의 마지막 마이그레이션에 명시적으로 의존해 순서를
+# 강제한다 — 0004/0005는 이 마이그레이션에 이미 의존하므로 전이적으로
+# 함께 해결된다.
 
 from django.db import migrations
 
@@ -64,6 +78,7 @@ class Migration(migrations.Migration):
     dependencies = [
         ("legal", "0002_create_legal_pages"),
         ("comments", "0001_initial"),
+        ("wagtailsearch", "0010_add_text_fields"),
     ]
 
     operations = [

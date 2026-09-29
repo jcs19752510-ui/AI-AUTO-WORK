@@ -288,10 +288,10 @@
 
 | ID | 설명 | 재현 절차 | 심각도 | 상태 | 조치 내용 |
 |----|------|-----------|--------|------|-----------|
-| DEF-10-06 | 실제 PostgreSQL(Neon 재현) 대상 `build.sh` 실행 시 `legal.0003_add_comment_privacy_notice`(DEC-055)에서 `migrate`가 `current transaction is aborted` 오류로 100% 재현 가능하게 크래시한다. 근본 원인은 `wagtail.search`(wagtailsearch) 앱의 마이그레이션이 `legal` 앱보다 나중에 적용되는 위상정렬 순서 때문에, `legal.0002/0003`이 호출하는 `page.save_revision().publish()`의 검색색인 시그널이 존재하지 않는 `wagtailsearch_indexentry` 테이블에 INSERT를 시도해 실패하고, 그 실패가 삼켜지되(Python 예외는 캐치) Postgres 트랜잭션은 abort 상태로 남아 같은 마이그레이션(또는 트랜잭션을 공유하는 후속 SQL)의 다음 SQL 호출에서 크래시로 이어진다. `legal.0002`는 `add_child()`(단일 save)라 영향이 없었으나, DEC-055가 추가한 `legal.0003`(및 동일 패턴의 0004/0005)은 `save_revision().publish()`(2회 save)를 처음 사용해 이 잠재 결함을 실제로 노출시켰다. | 13.4절 — 2회 독립 재현, `migrate wagtailsearch` 선행 실행 시 미재현되는 대조실험으로 원인 확정 | **Critical** | Open — **12단계(실배포) 착수 전 필수 해결**, 규칙F 재작업(5단계, `legal` 마이그레이션 의존성 또는 시그널 격리 수정) 권고 | 13.4절의 3가지 후보 조치 방향 중 택1 후 5→6→7(최소 `legal`/`comments`/`core` 관련 회귀)→10(본 addendum 재검증) 재실행 권고. 본 addendum은 코드를 수정하지 않았음(역할 경계 — 10단계는 진단, 수정은 5단계) |
+| DEF-10-06 | 실제 PostgreSQL(Neon 재현) 대상 `build.sh` 실행 시 `legal.0003_add_comment_privacy_notice`(DEC-055)에서 `migrate`가 `current transaction is aborted` 오류로 100% 재현 가능하게 크래시한다. 근본 원인은 `wagtail.search`(wagtailsearch) 앱의 마이그레이션이 `legal` 앱보다 나중에 적용되는 위상정렬 순서 때문에, `legal.0002/0003`이 호출하는 `page.save_revision().publish()`의 검색색인 시그널이 존재하지 않는 `wagtailsearch_indexentry` 테이블에 INSERT를 시도해 실패하고, 그 실패가 삼켜지되(Python 예외는 캐치) Postgres 트랜잭션은 abort 상태로 남아 같은 마이그레이션(또는 트랜잭션을 공유하는 후속 SQL)의 다음 SQL 호출에서 크래시로 이어진다. `legal.0002`는 `add_child()`(단일 save)라 영향이 없었으나, DEC-055가 추가한 `legal.0003`(및 동일 패턴의 0004/0005)은 `save_revision().publish()`(2회 save)를 처음 사용해 이 잠재 결함을 실제로 노출시켰다. | 13.4절 — 2회 독립 재현, `migrate wagtailsearch` 선행 실행 시 미재현되는 대조실험으로 원인 확정 | **Critical** | **[2026-09-29 Fixed]** DEC-060 참고 — `legal/migrations/0003_add_comment_privacy_notice.py`에 `("wagtailsearch", "0010_add_text_fields")` 명시적 의존성 추가(13.4절 후보 조치 1안 채택). 로컬 Postgres 16(운영과 동일 엔진, `postgres:16-alpine`)에 빈 스키마로 마이그레이션 재실행해 크래시 없이 완주 확인, 전체 자동 테스트(114개) 재실행 OK | `legal/migrations/0003_add_comment_privacy_notice.py`(dependencies 추가 + 원인 설명 주석). 5단계 코드 수정 + 규칙B 검증(수정 전/후 대조 재현)까지 완료했으나, 이번 수정은 정식 06/07 서브에이전트 호출을 거치지 않고 오케스트레이터가 사용자와 함께 직접 진단→수정→재현검증한 경로다(투명하게 기록) — 형식적 06/07 결과서(`unit-XX-test.md`/`feature-WU-XX-integration-test.md`)는 아직 별도로 생성되지 않았으므로, 12단계 착수 전 이 문서화 공백을 메울지(또는 이 §13.8 갱신 + DEC-060으로 충분하다고 볼지) 오케스트레이터가 사용자에게 확인 필요 |
 | DEF-10-07 | `comments.0003_add_blocked_ip_and_source_ip_raw`가 Django 자동 리버스를 사용해, 명시적으로 DB 마이그레이션을 롤백(`migrate comments 0002`)하면 `source_ip_raw`/`BlockedIP` 데이터가 영구 손실된다. 코드만 롤백하는 일반적 Render 재배포 롤백에서는 발생하지 않으나, 운영자가 DB까지 되돌리는 경우에 한해 발생 | 13.6절 마이그레이션 리버스 코드 검토(`comments/migrations/0003_add_blocked_ip_and_source_ip_raw.py`에 커스텀 `RunPython`/보존 로직 없음을 확인) | Low | Open(비차단, 문서화로 대응 권장) | 11단계 Runbook에 "DB 마이그레이션 되돌리기는 코드 롤백과 별개 절차이며, `comments` 앱을 0002 이전으로 되돌리기 전 `BlockedIP`/`source_ip_raw` 데이터 백업 필수" 경고 추가 권고 |
 
-**결함 요약(addendum분)**: Critical 1건(DEF-10-06, 12단계 착수 전 필수 해결), Low 1건(DEF-10-07, 문서화로 대응 가능, 비차단).
+**결함 요약(addendum분)**: Critical 1건(DEF-10-06, **[2026-09-29 Fixed]** — DEC-060, 로컬 Postgres 실측 재검증 완료, 정식 06/07 문서화 공백은 사용자 확인 필요로 명시), Low 1건(DEF-10-07, 문서화로 대응 가능, 비차단, Open 유지).
 
 ### 13.9 테스트 환경 정리(Teardown) 확인 — 규칙 K (addendum분)
 - **생성한 임시 아티팩트**: `webapp/.harness-tmp/deploy-staging-addendum/`(Dockerfile.postgres/Dockerfile.web/pg_hba_ssl.conf/docker-compose.yml/make_post.py 등) — 전부 `.harness-tmp/` 하위에만 생성(규칙K 1번 준수).
@@ -304,11 +304,9 @@
 - 이번 addendum 작업 도중 강제 중단은 없었다.
 
 ### 13.10 결론 및 판정 (addendum분)
-- [ ] PASS
-- [x] **CONDITIONAL PASS** — 조건:
-  1. **(12단계 착수 전 필수)** DEF-10-06(Critical) 해소: `legal` 앱의 데이터 마이그레이션(0003/0004/0005)이 실제 Postgres에서 `migrate` 전체를 크래시시키는 문제를 5단계(규칙F 재작업)에서 해결한 뒤, 최소 `legal`/`comments`/`core` 관련 회귀(6→7단계) 및 본 addendum(마이그레이션 체인 재실행)을 재검증해야 한다. 이 조건이 해소되지 않으면 **실제 Render+Neon 최초 배포가 빌드 단계에서부터 100% 실패한다.**
-  2. (권고, 비차단) DEF-10-07을 11단계 Runbook에 "DB 마이그레이션 되돌리기 전 BlockedIP/source_ip_raw 백업" 경고로 반영.
-  3. (권고, 비차단) 13.7에서 확인하지 못한 "댓글 알림 실제 E2E 발송"을 다음 검증(11단계 또는 실배포 후 13단계)에서 1회 실측 권고.
+- [x] **PASS** — **[2026-09-29 갱신, DEC-060]** 아래 조건 1(DEF-10-06, Critical)이 해소되어 CONDITIONAL PASS에서 PASS로 갱신한다. 근거: 로컬 Postgres 16(`postgres:16-alpine`, 운영 Neon과 동일 엔진)에 빈 스키마로 마이그레이션을 재실행해 크래시 없이 완주 확인(수정 전 코드로 동일 크래시 재현 → 수정 후 미재현, 대조 검증), 전체 자동 테스트 114/114 OK. **단, 이 검증은 08~10단계처럼 별도 Docker 스테이징 스택(`webapp/.harness-tmp/deploy-staging-addendum/`) 전체를 재현한 것이 아니라, 로컬 개발용 Postgres 컨테이너(`aiautowork-blog-db`)를 대상으로 오케스트레이터가 사용자와 함께 직접 진단·수정·재검증한 경로이며, 정식 06/07 서브에이전트 결과서는 생성하지 않았다(사용자 확인 하에 이 수준으로 충분하다고 판단, DEC-060 참고)** — 이 사실을 숨기지 않고 그대로 남긴다.
+  2. (권고, 비차단, 여전히 Open) DEF-10-07을 11단계 Runbook에 "DB 마이그레이션 되돌리기 전 BlockedIP/source_ip_raw 백업" 경고로 반영.
+  3. (권고, 비차단, 여전히 Open) 13.7에서 확인하지 못한 "댓글 알림 실제 E2E 발송"을 다음 검증(11단계 또는 실배포 후 13단계)에서 1회 실측 권고.
 - [ ] FAIL
 
 **판정 근거**: 빌드 재현성(13.2)·환경변수(13.3)·롤백 스키마 안전성 원칙(13.6, 신규 데이터손실 리스크 1건은 Low)·모니터링 채널 배선(13.7)은 이상 없음을 확인했고, DEF-10-06 해소를 가정한 상태에서의 나머지 배포 체인(헬스체크/정적파일/두 관리자 로그인 라우트/ads.txt, 13.5)도 전부 정상 동작함을 실측했다. 그러나 **DEF-10-06(Critical)은 현재 코드 상태 그대로 12단계를 시도하면 최초 배포가 빌드 단계에서 확정적으로 실패하는 결함**이므로, 20년차 운영자 관점에서 이 조건 없이 "완전한 PASS"로 넘기는 것은 무책임하다(CLAUDE.md 페르소나 원칙과 동일하게, "빌드조차 안 되는 배포는 배포가 아니라 도박"). §1~§12(원본, WU-01~10 범위)의 PASS 판정 자체는 유효한 채로 보존하며, 이 addendum은 **그 이후 추가된 코드에 대한 신규 게이트**로 별도 판정한다.
