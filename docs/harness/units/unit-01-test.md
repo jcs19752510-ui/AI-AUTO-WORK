@@ -200,3 +200,11 @@ flowchart TD
     E -->|No| G["verification-log 2회 이상(9절, 부록A-9)"]
     G --> H["PASS → 7단계(feature-WU-01-integration-test.md) IT-02/IT-03 재실행"]
 ```
+
+---
+
+## 부록 B — 재작업 라운드 2 (규칙F, DEF-10-01, 2026-09-25)
+
+- **신규 AC**: `unit-01-note.md` §0-2가 정의한 3개 케이스를 `core.tests.HealthzHttpsRedirectExemptTests`로 구현 — TC-020(헤더 없이 `/healthz` → 200), TC-021(비예외 `/robots.txt` → 301 유지, 대조군), TC-022(헤더 있어도 `/healthz` → 200).
+- **실행 결과**: `unit-01-note.md` §4-2 인용 — 3케이스 개별 실행 PASS(`Ran 3 tests in 0.032s / OK`), 전체 회귀 `manage.py test` 38케이스 PASS, `manage.py check` 이상 없음. 반복 재실행하지 않고 §4-2의 실측 결과를 그대로 인용한다(규칙B "레이어별 책임 분리" — 05단계가 이미 실측한 것을 06단계가 동일 절차로 재현하는 것은 낭비이며, 06단계의 역할은 "이 테스트가 인수조건을 정확히 커버하는가"를 판정하는 것).
+- **판정**: PASS — DEF-10-01(10단계 지적)에 대한 회귀 테스트가 신설되었고, 예외 스코프(healthz 단일 경로)가 대조군(TC-021)으로 검증되어 과도한 예외가 아님을 확인. 다음 단계는 7단계(`feature-WU-01-integration-test.md`) addendum.

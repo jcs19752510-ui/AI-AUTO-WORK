@@ -161,3 +161,18 @@ docs/harness/traceability.md   REQ-011/REQ-012 행 갱신
 ## 9. 다음 단계
 
 이 노트 작성 완료 후 **6단계(`06-unit-tester`) 호출을 트리거한다** — 위 §8의 1~19번 인수 조건을 입력으로 `docs/harness/units/unit-08-test.md`를 작성하도록 한다. 6단계가 PASS 판정하면, 02-planning.md §9 계획에 따라 이 업무 단위(WU-08)의 7단계(통합테스트, WU-01~07과의 조립 검증 포함) 착수 여부를 오케스트레이터가 판단한다.
+
+---
+
+## 10. 재작업 라운드 2 (규칙F, `SiteSettings.contact_email` 신설, 2026-09-25, DEC-045)
+
+- **근거**: 11단계(사용자 매뉴얼) 작성 중 발견된 격차 — 개인정보처리방침 "문의처" 절이 "사이트 운영자에게 연락해 주시기 바랍니다"라고만 안내하고 실제 연락처가 어디에도 없었다. 03 §3.1(ER 다이어그램)은 애초에 `SiteSettings.contact_email`을 명시했었지만, §2-1이 서술한 대로 이 WU가 "이번엔 필요한 것만"(DEC-016/DEC-019) 원칙으로 v1 범위에서 의도적으로 만들지 않았던 것 — **04-ux-design.md §2가 이 결정을 "향후 규칙F 재작업 대상"으로 정확히 예견해 두었으므로**, 이번 재작업은 04번을 다시 열 필요 없이 그 문 안에서 바로 진행한다. 사용자에게 처리 방식을 확인받았다(SiteSettings.contact_email 실제 구현 선택).
+- **범위**: `contact_email` 필드 **하나만** 신설한다. 04번이 함께 언급했던 "콜드스타트 문구 커스터마이즈"용 필드는 이번 요청 범위 밖이라 만들지 않는다(과설계 방지, 요청 범위를 벗어난 확장 금지).
+- **구현**: `webapp/core/models.py`(신규) — `SiteSettings(BaseSiteSetting)` + `contact_email = EmailField(blank=True)`, Wagtail `@register_setting`으로 어드민 메뉴에 자동 노출(`/cms-admin/settings/core/sitesettings/`). `config/settings/base.py`에 `"wagtail.contrib.settings"` INSTALLED_APPS 추가 + `core.context_processors.contact_email` 컨텍스트 프로세서 등록(신규, `BaseSiteSetting.for_request()` 요청당 캐시 활용). 마이그레이션 `core/migrations/0002_initial.py` 신규 생성(`makemigrations core`로 자동 생성, 수기 조정 없음).
+- **소비 측(legal 앱, WU-06 소유) 변경**은 `unit-06-note.md` §(신규 라운드)에 별도 기록 — `legal_page.html`이 `contact_email`이 있을 때만(그리고 `privacy-policy` 슬러그에서만) 연락처를 렌더링한다.
+- **값은 비워둔다(운영자가 채움)**: 실제 이메일 주소를 이 세션이 임의로 지어내지 않았다 — `contact_email` 기본값은 빈 문자열이며, 템플릿이 빈 값일 때 아무것도 렌더링하지 않도록(§ 렌더링 로직) 만들어 "값이 없다고 페이지가 깨지거나 거짓 정보를 보여주는" 상황을 피했다. 실제 값 입력은 12단계(실배포) 전 운영자가 Wagtail 어드민에서 직접 해야 하며, `11-ops-handoff-runbook.md`에 이 사실을 반영해야 한다(오케스트레이터 인계 사항).
+- **캐시 주의사항**: `LegalPage.serve()`가 `cache_page(10분)`(03 §2.5/DEC-012)이므로, 운영자가 나중에 `contact_email`을 변경해도 반영까지 최대 10분 걸릴 수 있다 — 이는 이 사이트의 다른 모든 콘텐츠 변경과 동일한 기존 정책이며 이번 변경이 새로 만든 제약이 아니다(참고로만 기록, 결함 아님).
+- **로컬 검증**: `.harness-tmp/venv_05_def05contact`(임시 venv, 규칙K 준수, 검증 후 삭제)에서 `makemigrations core`(신규 마이그레이션 1개만 생성 확인) → `makemigrations --check --dry-run`("No changes detected") → `manage.py check`(dev/production 유사 설정 둘 다 이상 없음) → 전체 회귀 `manage.py test`(42케이스, 기존 38 + 신규 4, 전부 OK).
+- **회귀 확인**: `settings.MIDDLEWARE` 순서, 기존 라우트, 기존 44개 static 파일 수 등 이번 변경과 무관한 항목은 diff 대상이 아니므로 재확인하지 않음(변경 파일이 `core/models.py`(신규)/`core/context_processors.py`/`config/settings/base.py`/`core/migrations/0002_initial.py`로 명확히 한정됨, `git status --short`로 확인).
+- **별도 DEC**: DEC-045(decisions.md)로 기록.
+- **하위 단계 재실행(규칙F-3)**: 6단계(`unit-08-test.md` addendum) → 7단계(`feature-WU-08-integration-test.md` addendum). 8단계(전체 풀테스트) 재실행은 불필요로 판단 — 이번 변경은 신규 모델 1개 추가이며 기존 페이지 어떤 것도 동작을 바꾸지 않고(값이 비어 있으므로 현재 화면은 이전과 100% 동일), `manage.py test` 전체 회귀로 이미 이를 실측 확인했다. 9단계(보안검증)도 새 필드가 `EmailField`(Django 표준 검증, XSS/인젝션 표면 추가 없음, `mark_safe` 미사용, RichText 아님)뿐이라 재실행 불필요로 판단(코드 검토 근거 명시, 임의 생략 아님).

@@ -7,6 +7,7 @@ from wagtail import urls as wagtail_urls
 from wagtail.documents import urls as wagtaildocs_urls
 
 from blog import urls as blog_urls
+from comments import urls as comments_urls
 from core import urls as core_urls
 from core.admin_auth import RateLimitedAdminLoginView, RateLimitedLoginView
 from subscribers import urls as subscribers_urls
@@ -35,6 +36,8 @@ urlpatterns = [
     path("", include(core_urls)),
     # 뉴스레터 구독(REQ-016, WU-07) — 마찬가지로 wagtail_urls catch-all보다 먼저.
     path("", include(subscribers_urls)),
+    # 댓글(REQ-019, WU-11 부분 착수) — 마찬가지로 wagtail_urls catch-all보다 먼저.
+    path("", include(comments_urls)),
 ]
 
 

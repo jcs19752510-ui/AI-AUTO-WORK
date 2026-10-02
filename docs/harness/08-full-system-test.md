@@ -156,7 +156,7 @@ ModuleNotFoundError: No module named 'fcntl'
 | 6. 법적 준수(개인정보/쿠키/약관 페이지 100% 게시·최신화) | 배포 전 3개 페이지 100% 게시 | E2E-V07로 `/privacy-policy/`, `/terms/`, `/cookies/` 3개 페이지 전부 200 확인. `legal/migrations/0002_create_legal_pages.py`가 `live=True`로 실제 게시하는 마이그레이션임을 06/07단계가 이미 확인했고, 이번 08단계가 WU-01~10 전체 스택에서도 회귀 없이 재확인했다 | **자동 판정: PASS** — 3개 페이지 모두 게시·정상 응답 확인(§4-2 E2E-V07). "최신화"(법률 자문 반영 여부)는 03 §5.6이 이미 "법률 자문 필요, 시스템이 대신하지 않음"으로 명시한 별도 트랙이며 이번 KPI의 "게시 여부" 판정과는 분리된다. |
 | 7. 데이터 안전성(정의된 주기대로 백업 100% 수행, 로그로 확인 가능) | 백업이 로그로 확인 가능해야 함 | 메커니즘 구현 확인: `.github/workflows/neon-db-backup.yml`이 1일 1회 스케줄 + `workflow_dispatch`로 존재하고 YAML 파싱 정상(SYS-14), 시크릿 이름 일치(SYS-15). GitHub Actions 실행 이력 자체가 "로그로 확인 가능"이라는 요건을 구조적으로 충족하도록 설계되어 있다(GitHub Actions run history가 곧 로그). 그러나 **실제로 매일 실행되어 성공했는지**는 워크플로가 아직 한 번도 실제 GitHub 환경에서 실행된 적이 없어(리포지토리에 push된 적 없음, 로컬 검증만 수행) 확인 불가 | **자동 판정 가능 부분**: 메커니즘 구현 및 로그 확인 가능성 확보 — PASS. **사용자 확인 필요 부분**: "정의된 주기대로 100% 수행"이라는 실적 수치는 실제 배포/스케줄 가동 이후에만 나온다. |
 
-**요약**: 7개 KPI 중 (6)은 자동 판정으로 PASS. (3)·(7)은 측정 메커니�즘이 구현되어 있음을 자동 판정으로 확인했으나 실제 수치는 배포 후 확인 필요. (1)·(2)·(4)는 시스템이 아직 배포되지 않아 원천적으로 측정 불가하며, 측정 인프라(애널리틱스 등) 도입 여부부터 사용자 판단이 필요하다. (5)는 이번 08단계가 새로 발견한 설계 갭(자동 집계 기능 없음)으로, 결함이 아니라 "이대로 둘지 후속 WU로 개선할지"에 대한 사용자 확인이 필요하다. **이 KPI 판정 미확정 항목들은 9/10단계 PASS 판정을 막지 않는다** — 배포 전 시스템 자체의 결함이 아니라 "배포 이후에나 관측 가능한 값" 또는 "비즈니스 우선순위 판단"이기 때문이다. 다만 최종 서비스 오픈 승인권자에게 이 표를 그대로 전달해 KPI 미확정 상태를 투명하게 인지시켜야 한다.
+**요약**: 7개 KPI 중 (6)은 자동 판정으로 PASS. (3)·(7)은 측정 메커니즘이 구현되어 있음을 자동 판정으로 확인했으나 실제 수치는 배포 후 확인 필요. (1)·(2)·(4)는 시스템이 아직 배포되지 않아 원천적으로 측정 불가하며, 측정 인프라(애널리틱스 등) 도입 여부부터 사용자 판단이 필요하다. (5)는 이번 08단계가 새로 발견한 설계 갭(자동 집계 기능 없음)으로, 결함이 아니라 "이대로 둘지 후속 WU로 개선할지"에 대한 사용자 확인이 필요하다. **이 KPI 판정 미확정 항목들은 9/10단계 PASS 판정을 막지 않는다** — 배포 전 시스템 자체의 결함이 아니라 "배포 이후에나 관측 가능한 값" 또는 "비즈니스 우선순위 판단"이기 때문이다. 다만 최종 서비스 오픈 승인권자에게 이 표를 그대로 전달해 KPI 미확정 상태를 투명하게 인지시켜야 한다.
 
 ---
 
@@ -300,4 +300,265 @@ flowchart TD
     E -->|No| T["테스트 환경 정리(Teardown, 7절)<br/>.harness-tmp/ 삭제 + git status 확인"]
     T -->|정리 완료 확인됨| G["verification-log 2회(10절)"]
     G -->|PASS| H["PASS 판정 → 9단계로 handoff"]
+```
+
+---
+
+# 재작업 addendum — REQ-019(댓글) 통합 검증 (2026-09-25)
+
+> 원본 §1~§10(2026-09-17, WU-01~10 범위)은 위에 그대로 보존했다(규칙F/규칙C — 덮어쓰지 않고 append). 이 addendum은 DEC-048이 명시한 갭 — "신규 `comments` 앱(REQ-019)이 5→6→7단계(및 실서버 스모크)는 통과했으나, WU-01~10 전체와 조립된 상태에서의 08단계 특유의 교차영향 검증은 아직 수행되지 않았다" — 을 메우기 위한 재작업이다. WU-01~10 개별 기능의 세부 로직은 원본 §1~§10과 06/07단계가 이미 PASS로 확정했으므로 반복 검증하지 않는다(필수 원칙).
+
+## A-1. 개요
+- 테스트 대상: **REQ-019(댓글) × WU-01~10 전체 조립 상태** — 신규 `comments` 앱(모델/뷰/URL/마이그레이션/알림)과 `legal.0003_add_comment_privacy_notice`가 기존 WU-01~10(HTTPS 강제/XFF/로그인 레이트리밋/캐시/모니터링/백업워크플로 등)과 동시에 존재하는 상태에서의 크로스모듈 상호작용.
+- 테스트 유형: 시스템(전체) — 08단계 재작업(부분 범위)
+- 적용 Tier: **Standard**(원본 §1과 동일, DEC-036 — 변경 없음)
+- 적용 속도 트랙: N/A(08단계는 속도 트랙 대상 밖, ORCHESTRATOR.md 1장 표 — 06/07 전용)
+- 테스트 목적: (1) `comments`/`wagtail.contrib.settings` 앱 추가가 기존 `INSTALLED_APPS`/마이그레이션 체인/Wagtail 어드민 메뉴에 회귀를 일으키지 않는지, (2) 신선한 환경(신규 venv, 빈 DB)에서 전체 마이그레이션 체인이 처음부터 오류 없이 적용되는지, (3) 전체 공개 라우트가 댓글 슬롯을 포함해 정상 동작하는지, (4) 게시물 작성→발행→댓글 작성→모더레이션→공개 노출 전체 왕복이 전체 조립 상태에서 재현되는지, (5) 한글 슬러그 회귀(2026-09-25 발견·수정)가 전체 조립 상태에서 독립적으로 재확인되는지, (6) 캐시 상호작용(뉴스레터 폼 슬롯과 동일한 캐시-안전 패턴, 레이트리밋 카운터 네임스페이스 충돌 여부)이 안전한지 확인한다.
+- 관련 산출물: `docs/harness/decisions.md`(DEC-036, DEC-044~051), `docs/harness/traceability.md`(REQ-019), `docs/harness/03-system-design.md` §3.1(ERD COMMENT)/§3.2-1(v1.5)/§4, `docs/harness/04-ux-design.md` §2/§4(v1.3), `docs/harness/final-comments-feature-verification.md`, `docs/harness/final-content-workflow-verification.md`, 위 원본 08 §1~§10
+- 테스트 수행자(에이전트): `08-full-system-tester`(재작업 addendum)
+- 테스트 일시: 2026-09-25
+
+## A-2. 테스트 범위 및 제외 범위
+
+### In-Scope
+- 신선한 venv(`webapp/.harness-tmp/venv_08_comments/`) + 빈 SQLite DB에서 전체 마이그레이션 체인을 처음부터 적용(dev 설정 1회, production 유사 설정 1회) — `comments.0001_initial`/`comments.0002_grant_moderator_permissions`/`legal.0003_add_comment_privacy_notice`가 `core.0001_setup_editor_permissions`/`legal.0002_create_legal_pages`와 충돌 없이 순서대로 적용되는지.
+- `INSTALLED_APPS`에 `"comments"`/`"wagtail.contrib.settings"`가 추가된 것이 다른 앱(Wagtail 어드민 메뉴 — 이미지/카테고리 스니펫/그룹/SiteSettings)에 회귀를 일으키지 않는지.
+- 전체 공개 라우트 스모크(신선한 DB+콘텐츠 시드로 재현): 홈/카테고리/태그/게시물상세(댓글 목록·폼 슬롯 포함)/RSS/사이트맵/robots.txt/법적페이지(개인정보처리방침의 댓글 수집 고지 포함)/healthz.
+- 게시물 작성→발행→댓글 작성→모더레이션→공개 노출 전체 왕복(`django.test.Client`, production 유사 설정).
+- 한글 슬러그 회귀(2026-09-25 발견·수정, `comments/urls.py`의 `str:` 컨버터) 독립 재현.
+- 캐시 상호작용(코드 검토 + 실측): 댓글 폼 슬롯 vs 뉴스레터 폼 슬롯 캐시-안전 패턴 비교, 레이트리밋 카운터 네임스페이스 충돌 여부.
+- 실제 TCP 소켓(runserver) 기반 재확인 — 보안 헤더/댓글 슬롯 마크업/한글 슬러그 라우트(원본 §3-2/§4-3 SYS-18/19와 동일 방법론).
+
+### Out-of-Scope 및 사유
+- **WU-01~10 개별 기능 세부 로직 재검증**: 원본 §1~§10, 06/07단계가 이미 PASS로 확정(필수 원칙, 규칙B 레이어별 책임 분리). 이번 addendum은 "댓글이 기존 시스템 전체와 조립됐을 때"에만 집중한다.
+- **02-planning.md KPI 재확인**: REQ-019에 신규 KPI가 없으므로 생략(작업 지시 §7과 동일 근거).
+- **실제 브라우저 E2E/실제 gunicorn 프로세스/실제 Neon·R2·GitHub Actions 네트워크**: 원본 §2와 완전히 동일한 사유(MCP 미연동, Windows `fcntl` 부재, 클라우드 리소스 미발급)로 이번 addendum도 동일하게 검증 불가 — 원본 §8 리스크에 이미 기록되어 있으며 이번 재작업이 새로 발견한 제약이 아니다.
+- **댓글 알림 실제 SMTP 발송 성공 여부**: `final-comments-feature-verification.md` 부록(DEC-049)이 이미 "기존 500 에러 알림과 동일 채널 재사용이므로 반복 검증 불필요"로 판정한 것을 그대로 계승 — 이번 addendum은 "알림 발송 실패가 댓글 저장 자체를 막지 않는가"만 전체 조립 상태에서 재확인했다(§A-4 참고).
+
+## A-3. 테스트 환경
+- OS/런타임: Windows 11 Pro 10.0.26100, Python 3.13.15(`python`, 시스템에 `py -3.12`가 더 이상 감지되지 않음 — 원본 08(2026-09-17)이 사용한 3.12.10과 마이너 버전이 다르다는 점을 투명하게 기록한다. `pip freeze` 결과 Django==5.2.17/wagtail==7.4.3/기타 전 패키지 버전이 `requirements.txt` 고정값과 정확히 일치함을 확인해, 이 버전 차이가 재현성에 실질적 영향을 주지 않았음을 실측으로 뒷받침한다).
+- 신규 venv: `webapp/.harness-tmp/venv_08_comments/`(검증 후 삭제, 규칙K).
+- **dev 설정**(`config.settings.dev`, SQLite): `webapp/.harness-tmp/db_08c_dev.sqlite3`(검증 후 삭제) — 전체 마이그레이션 체인 처음부터 재현, 전체 자동화 테스트 스위트 회귀에 사용.
+- **production 유사 설정**: `webapp/.harness-tmp/settings_pkg_comments/it08c_prodlike.py`(신규, 원본 §3-1이 확립한 방법론 그대로 계승 — `config.settings.production`을 절대 임포트로 상속하고 `DATABASES`만 SQLite로 재정의). 더미 환경변수(`SECRET_KEY` 60자 무작위 영숫자, `django-insecure-` 접두어 없음, `DJANGO_ALLOWED_HOSTS`/`RENDER_EXTERNAL_HOSTNAME=it08c.example.test`, `R2_*`(더미), `DJANGO_ADMIN_EMAIL=ops@example.test`, `DJANGO_SUPERUSER_*`)로 HTTPS 강제/XFF/HSTS가 전부 켜진 상태를 재현했다. DB 파일은 `webapp/.harness-tmp/db_08c_prodlike.sqlite3`(검증 후 삭제).
+- 콘텐츠 시드: 실제 코드 경로(`HomePage.add_child(instance=BlogPostPage(...))` → `save_revision().publish()`)로 Category 1개, 영문 slug 게시물 1개, **한글 제목 게시물 1개**("교토 3박 4일 가을 여행기", `WAGTAIL_ALLOW_UNICODE_SLUGS`로 자동 한글 slug 생성)를 생성.
+- 실제 소켓 확인: `manage.py runserver 127.0.0.1:18142 --noreload`(production 유사 설정)를 백그라운드로 기동해 `curl`로 TCP 소켓 왕복 확인(원본 §3-2/§4-3과 동일 방법론). 검증 종료 후 리스닝 프로세스를 `taskkill`로 종료.
+- 전제 조건: `docs/harness/final-comments-feature-verification.md`(PASS)/`docs/harness/final-content-workflow-verification.md`(PASS) 완료 상태, `docs/harness/decisions.md` DEC-048이 명시한 "08 착수 전 필수 선결 조건"에 따라 착수.
+
+## A-4. 테스트 케이스 및 결과
+
+### A-4-1. 전체 앱 기동 (신규 venv, 빈 DB, 처음부터)
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| SYS-C01 | dev 설정, `check` | `manage.py check` | 이상 없음 | "System check identified no issues (0 silenced)." | PASS | |
+| SYS-C02 | dev 설정, 전체 마이그레이션 체인(빈 SQLite, 처음부터) | `manage.py migrate` | 오류 없이 전부 적용, `comments.0001→0002`가 `core.0001→0002`/`legal.0001→0002→0003`와 충돌 없이 순서대로 적용 | 오류 없이 완료. 실제 적용 순서: `...blog.0002_alter_blogpostpage_featured_image → comments.0001_initial → comments.0002_grant_moderator_permissions → core.0001_setup_editor_permissions → core.0002_initial → legal.0001_initial → legal.0002_create_legal_pages → legal.0003_add_comment_privacy_notice → sessions.0001_initial → subscribers.0001_initial...` | PASS | 요청사항 1번(마이그레이션 체인) 직접 충족 — `comments.0002`(Moderators 권한 부여)가 `core.0001`(Editors/Moderators 그룹 자체는 `wagtailcore.0002_initial_data`가 생성)보다 먼저 적용되어도 문제 없음을 실측 확인(두 마이그레이션 모두 `Group.objects.filter(name__in=...)`로 존재하는 그룹만 안전하게 다룸) |
+| SYS-C03 | dev 설정, `makemigrations --check --dry-run` | 실행 | "No changes detected" | 동일 | PASS | |
+| SYS-C04 | dev 설정, 전체 자동화 테스트 스위트 | `manage.py test` | 전부 OK | "Ran 84 tests in 285.128s ... OK"(신규 결함 0건) | PASS | 원본 08(29개, WU-09 시점)·`final-comments-feature-verification.md`(81개)보다 늘어난 84개는 그 사이 DEC-044(HealthzHttpsRedirectExemptTests 3건)·DEC-045(legal.tests.py 신규)가 반영된 결과 — 회귀 아님 |
+| SYS-C05 | dev 설정, `collectstatic --noinput`(처음부터) | `staticfiles/` 없는 상태에서 실행 | 219 static files | "219 static files copied" | PASS | `final-comments-feature-verification.md` TC-029(218→219, `comments.js` 신규)와 정확히 일치 |
+| SYS-C06 | production 유사 설정, `check --deploy` | 실행 | HSTS preload 경고(W021)만 | "System check identified some issues" — `security.W021`만 | PASS | 원본 SYS-06과 동일한 단일 경고 — `comments`/`wagtail.contrib.settings` 추가로 신규 경고 발생하지 않음 |
+| SYS-C07 | production 유사 설정, 전체 마이그레이션 체인(빈 SQLite, 처음부터) | 실행 | 오류 없이 적용 | 오류 없이 완료(SYS-C02와 동일 순서 재확인) | PASS | |
+| SYS-C08 | production 유사 설정, `makemigrations --check --dry-run` | 실행 | "No changes detected" | 동일 | PASS | |
+| SYS-C09 | production 유사 설정, `collectstatic --noinput`(처음부터) | 실행 | 219 static files | "219 static files copied to '...staticfiles', 641 post-processed." | PASS | dev와 동일 총량 |
+| SYS-C10 | production 유사 설정, `ensure_superuser` | 실행 | 슈퍼유저 생성 | "슈퍼유저 'it08c-admin' 계정을 생성했습니다." | PASS | |
+
+### A-4-2. `INSTALLED_APPS` 회귀 확인 (요청사항 2번)
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail |
+|----|----------|-----------|-----------|-----------|-----------|
+| SYS-C11 | Wagtail 어드민 대시보드 | 슈퍼유저 로그인 후 `GET /cms-admin/` | 200 | 200 | PASS |
+| SYS-C12 | 댓글 스니펫 목록(신규) | `GET /cms-admin/snippets/comments/comment/` | 200 | 200 | PASS |
+| SYS-C13 | 이미지 목록(기존, WU-03) | `GET /cms-admin/images/` | 200(회귀 없음) | 200 | PASS |
+| SYS-C14 | 카테고리 스니펫 목록(기존, WU-02) | `GET /cms-admin/snippets/blog/category/` | 200(회귀 없음) | 200 | PASS |
+| SYS-C15 | 그룹 관리(기존, Django 기본) | `GET /cms-admin/groups/` | 200(회귀 없음) | 200 | PASS |
+| SYS-C16 | 사용량 대시보드(기존, WU-08) | `GET /cms-admin/usage/` | 200(회귀 없음) | 200 | PASS |
+| SYS-C17 | `wagtail.contrib.settings`(SiteSettings, WU-08 DEC-045) | `GET /cms-admin/settings/core/sitesettings/`(follow redirect) | 200(회귀 없음, `comments`와 동시 추가된 두 신규 항목이 서로 충돌하지 않음) | 302 → `/cms-admin/settings/core/sitesettings/2/` → 200(정상적인 Wagtail 사이트별 설정 리다이렉트 패턴) | PASS |
+
+### A-4-3. 방문자 E2E — 전체 공개 라우트 스모크(신선한 DB+콘텐츠 시드, production 유사 설정, In-Process Client)
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail |
+|----|----------|-----------|-----------|-----------|-----------|
+| E2E-C01 | 홈 | `GET /` | 200 | 200 | PASS |
+| E2E-C02 | 카테고리 목록 | `GET /category/tech/` | 200 | 200 | PASS |
+| E2E-C03 | 게시물 상세(영문 slug) | `GET /blog/e2e-comments-post/` | 200 | 200 | PASS |
+| E2E-C04 | 게시물 상세(한글 slug) | `GET /blog/교토-3박-4일-가을-여행기/` | 200 | 200 | PASS |
+| E2E-C05 | RSS | `GET /feed.xml` | 200 | 200 | PASS |
+| E2E-C06 | sitemap.xml | `GET /sitemap.xml` | 200 | 200 | PASS |
+| E2E-C07 | robots.txt | `GET /robots.txt` | 200 | 200 | PASS |
+| E2E-C08 | 개인정보처리방침(댓글 수집 고지 포함) | `GET /privacy-policy/` | 200, "댓글 작성 시" 문구 포함, 옛 문구("회원가입, 댓글 등 그 외의") 제거 | 200, 신규 문구 포함 확인, 옛 문구 0건 | PASS |
+| E2E-C09 | 이용약관 | `GET /terms/` | 200 | 200 | PASS |
+| E2E-C10 | 쿠키고지 | `GET /cookies/` | 200 | 200 | PASS |
+| E2E-C11 | healthz | `GET /healthz` | 200 | 200 | PASS |
+| E2E-C12 | 댓글 폼 슬롯 마크업 | 게시물 상세 응답 본문 검사 | `data-comment-slot` 포함(캐시된 페이지에 실제 폼/CSRF 토큰은 직접 렌더링하지 않음) | 포함 확인 | PASS |
+
+### A-4-4. 게시물 작성→발행→댓글 작성→모더레이션→공개 노출 전체 왕복(요청사항 4번)
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail |
+|----|----------|-----------|-----------|-----------|-----------|
+| E2E-C13 | 댓글 폼 조각(비캐시) CSRF 토큰 수신 | `GET /comments/form-fragment/?page_id=<id>` | 200, csrftoken 쿠키 발급 | 200, 쿠키 확인 | PASS |
+| E2E-C14 | 댓글 실제 제출(CSRF+HTTPS Referer) | `POST /comments/submit/`(유효 CSRF, `X-Forwarded-Proto: https`, 동일오리진 Referer) | 200 | 200 | PASS |
+| E2E-C15 | 신규 댓글 `status=pending` 저장 | DB 조회 | `pending` | `pending` | PASS |
+| E2E-C16 | pending 댓글 비공개 노출(캐시된 페이지) | `GET /blog/<slug>/` | 작성자명 미노출 | 미노출 확인 | PASS |
+| E2E-C17 | 모더레이터 승인(ORM, Wagtail 스니펫 편집과 동일 효과) + 캐시 무효화 후 재조회 | `status=approved` 후 `cache.clear()` → 재조회 | 작성자명/본문 노출 | 노출 확인 | PASS |
+| E2E-C18 | XSS 방지 — `<script>` 포함 댓글 제출→승인→렌더링 | 응답 본문 바이트 검사 | 원문 `<script>` 0건, `&lt;script&gt;` 이스케이프 1건 | 원문 0건, 이스케이프 1건 확인 | PASS |
+| E2E-C19 | 댓글 등록 알림 발송 흐름(DEC-049) — 알림 실패가 핵심 경로를 막지 않는가 | `DJANGO_ADMIN_EMAIL` 설정, 실제 SMTP 서버 없음 상태에서 댓글 3건 제출 | 알림 발송 시도가 예외를 던져도(`SMTPServerDisconnected`) 댓글 저장 자체는 성공 | `notify_new_comment`가 예외를 로깅(`logger.exception`)만 하고 흡수, 3건 모두 `Comment` 레코드 정상 생성됨(E2E-C15/17/18이 그대로 성공한 것 자체가 증거) | PASS | 원본 SYS-17(AdminEmailHandler 예외 격리)과 동일 성격의 안전망이 댓글 알림 경로에도 동일하게 적용됨을 전체 조립 상태에서 재확인 |
+| E2E-C20 | 모더레이터/에디터 권한 경계 | `editor.has_perm("comments.change_comment")`/`moderator.has_perm(...)`/`*.has_perm("comments.add_comment")` | Editor=False, Moderator=True, 둘 다 add=False | 전부 일치 | PASS | `comments.0002_grant_moderator_permissions`가 전체 조립 상태에서도 의도대로 동작 |
+
+### A-4-5. 한글 슬러그 회귀 독립 재확인(요청사항 5번)
+| ID | 시나리오 | 실행 절차 | 예상 결과 | 실제 결과 | Pass/Fail | 비고 |
+|----|----------|-----------|-----------|-----------|-----------|------|
+| E2E-C21 | 한글 slug 자동 생성 확인 | `kr_post.slug` 조회 | "교토" 포함 | `slug`에 "교토" 포함 확인 | PASS | `WAGTAIL_ALLOW_UNICODE_SLUGS` 정상 동작 |
+| E2E-C22 | 무-JS 댓글 작성 페이지 GET(한글 slug) | `GET /blog/교토-3박-4일-가을-여행기/comment/` | 200(`comments/urls.py`의 `str:` 컨버터가 한글 slug를 정상 매칭) | 200 | PASS | 2026-09-25 발견·수정된 버그(`slug:` 컨버터는 ASCII 전용이라 매칭 실패)가 08단계 전체 조립 상태에서도 재발하지 않음을 독립 재현 |
+| E2E-C23 | 무-JS 댓글 실제 제출(한글 slug, POST) | `POST /blog/교토-3박-4일-가을-여행기/comment/`(CSRF+HTTPS Referer) | 302, `Location`에 `?comment_submitted=1` | 302, `Location: /blog/%EA%B5%90%ED%86%A0-...%EC%97%AC%ED%96%89%EA%B8%B0/?comment_submitted=1`(URL 인코딩된 한글) | PASS | |
+| E2E-C24 | DB에 한글 slug 게시물 댓글 저장 확인 | `Comment.objects.filter(page=kr_post)` 조회 | 존재 | 존재 확인 | PASS | |
+| RS-C01(=curl) | 실제 TCP 소켓으로 한글 slug 게시물 상세 재확인 | `curl -H "Host: it08c.example.test" -H "X-Forwarded-Proto: https" http://127.0.0.1:18142/blog/%EA%B5%90%ED%86%A0-.../` | 200 | 200 | PASS | Client() 기반 검증과 별개로 진짜 HTTP 서버로도 재확인(원본 §3-2/§4-3 방법론 계승) |
+
+### A-4-6. 캐시 상호작용(요청사항 6번, 코드 검토 + 실측)
+| ID | 시나리오 | 확인 방법 | 판단 | Pass/Fail |
+|----|----------|-----------|------|-----------|
+| CACHE-C01 | 댓글 폼 슬롯이 뉴스레터 폼 슬롯과 동일한 캐시-안전 패턴을 따르는가 | `comments/templates/comments/_comment_slot.html` vs `subscribers/templates/subscribers/_newsletter_slot.html` 소스 직접 대조 | 두 슬롯 모두 (1) `@cache_page`가 걸린 페이지에는 자리표시자 `<div data-*-slot>`만 포함하고, (2) 실제 폼(과 CSRF 토큰)은 비캐시 조각 엔드포인트(`comments:form_fragment`/`subscribers:form_fragment`)가 fetch로 채우며, (3) `<noscript>`가 비캐시 전용 페이지로 링크하는 3단 구조가 완전히 동일함을 확인 — REQ-016(WU-07, DEC-025)이 확립한 캐시/CSRF 결함 회피 패턴을 REQ-019가 그대로 재사용했다 | PASS |
+| CACHE-C02 | 레이트리밋 캐시 카운터 네임스페이스 충돌 여부 | `grep`으로 전체 저장소의 `cache.incr(key)`/`ratelimit:{ip}` 패턴 전수 확인 | `comments:submit:ratelimit:{ip}`(신규) / `subscribers:newsletter:ratelimit:{ip}`(WU-07) / `core:admin_login:ratelimit:{ip}`(WU-09) — 3개 앱이 서로 다른 접두어를 사용해 동일 IP라도 카운터가 앱별로 완전히 분리됨을 확인(충돌 없음). `core/monitoring.py`의 일별 사용량 집계 키(`_daily_cache_key`)도 별도 네임스페이스라 겹치지 않음 | PASS |
+| CACHE-C03 | 댓글 목록이 게시물 상세 페이지와 동일한 뷰 캐시(`VIEW_CACHE_SECONDS`) 정책을 공유하는가 | `blog/views.py::post_detail`이 `@cache_page(VIEW_CACHE_SECONDS)` 안에서 `approved_comments`를 조회(코드 확인) + 실측(E2E-C16/17: 댓글 상태 변경 후 `cache.clear()` 전에는 반영 안 됨 → 이후 반영됨) | 댓글 목록은 게시물 본문과 동일한 캐시 TTL을 공유하며 별도 정책이 아니다 — `final-content-workflow-verification.md` §6이 이미 문서화한 "삭제/수정 후 최대 캐시TTL만큼 지연 가능" 운영 특성과 동일 범주(결함 아님, 기존 정책의 일관된 연장) | PASS |
+| PERF-C01 | 댓글 포함 게시물 상세 캐시 미스/히트 응답시간(참고용) | `cache.clear()` 후 1회 + 연속 5회(In-Process Client) | 미스≫히트 | 미스=27.0ms, 히트 avg=1.2ms/max=1.7ms | PASS(참고용, 원본 §4-5와 동일하게 KPI 판정 근거로 쓰지 않음) |
+
+## A-5. 커버리지
+
+- **traceability.md 커버리지**: REQ-019의 "전체테스트(08)" 컬럼을 이번 addendum으로 채운다(§A-9 판정 근거로 갱신, `docs/harness/traceability.md` 실제 파일 갱신 완료). REQ-001~017(원본 08이 이미 100%)에는 변경 없음. REQ-018/020은 여전히 Not Started(DEC-037, 이번 addendum 대상 아님). **In-Scope 항목(REQ-001~017 + REQ-019) 커버리지 18/18 = 100%.**
+- **기능 커버리지**: 오케스트레이터가 명시한 6개 확인 항목(마이그레이션 체인/INSTALLED_APPS 회귀/전체 공개 라우트/전체 왕복/한글 슬러그/캐시 상호작용) 전부 §A-4에서 최소 1개 이상의 케이스로 커버했다.
+- **커버되지 않은 부분과 사유**: 원본 §5와 동일 — 실제 브라우저(MCP 미연동), 실제 gunicorn(Windows `fcntl` 부재), 실제 Neon/R2/GitHub Actions(리소스 미발급). 추가로 **실제 SMTP 발송 성공 여부**(E2E-C19는 "실패해도 핵심 경로가 안전한가"만 확인했을 뿐 "실제로 수신함에 도달하는가"는 미검증 — `final-comments-feature-verification.md` 부록이 이미 동일하게 인계한 항목, 반복 명시).
+
+## A-6. 결함(Defect) 목록
+
+**이번 addendum에서 신규로 발견한 결함: 없음.**
+
+근거: §A-4의 SYS-C01~17, E2E-C01~24, RS-C01, CACHE-C01~03, PERF-C01 전 항목이 PASS. E2E-C19에서 관찰된 SMTP 연결 예외(`SMTPServerDisconnected`)는 결함이 아니라 의도된 방어 동작이다 — `comments/notifications.py`가 `try/except`로 감싸 로깅만 하고 댓글 저장 자체는 성공시키도록 설계되어 있음을 코드로 이미 확인했고(§A-4-4 E2E-C19), 이번 테스트 환경이 애초에 SMTP 서버를 두지 않았기 때문에 발생한 예상된 경로다(실제 발송 성공 여부는 §A-5가 이미 이월 항목으로 명시).
+
+## A-7. 테스트 환경 정리(Teardown) 확인 — 규칙 K
+
+### A-7-0. 작업 시작 전 점검
+```
+$ bash automation/harness-janitor.sh --check
+[janitor] 점검 대상 저장소: C:/big21/vibe-coding/AI-AUTO-WORK
+[janitor] .harness-tmp/ 는 비어있거나 없습니다 — 이상 없음.
+[janitor] 잔여 임시 아티팩트 없음 — 다음 단계 진행 가능.
+```
+(원본 08과 동일하게, `harness-janitor.sh`는 저장소 루트의 `.harness-tmp/`만 점검한다 — 이번 addendum도 원본과 동일한 관례대로 실제 아티팩트는 `webapp/.harness-tmp/`에 생성했으며, 아래 A-7-1/A-7-3에서 이 하위 디렉터리를 직접 나열·삭제·확인한다.)
+
+### A-7-1. 이번 addendum에서 생성한 임시 아티팩트 목록
+- `webapp/.harness-tmp/venv_08_comments/` — 신규 venv(Python 3.13.15)
+- `webapp/.harness-tmp/db_08c_dev.sqlite3`, `webapp/.harness-tmp/db_08c_prodlike.sqlite3` — 임시 SQLite DB
+- `webapp/.harness-tmp/settings_pkg_comments/__init__.py`, `webapp/.harness-tmp/settings_pkg_comments/it08c_prodlike.py` — 임시 production 유사 settings 모듈(패키지, 원본 §7-1과 동일한 절대임포트 상속 방식)
+- `webapp/.harness-tmp/prodlike_comments.env` — production 유사 설정용 더미 환경변수 파일
+- `webapp/.harness-tmp/e2e_08c.py` — E2E 시나리오 실행 스크립트(§A-4-3~A-4-6)
+- `webapp/.harness-tmp/runserver_08c.log` — 실제 소켓 확인용 `runserver` 로그
+- `webapp/staticfiles/`(collectstatic 산출물, `.gitignore` 추적 제외 대상) — 원본 §7-2와 동일한 사유로 `.harness-tmp/` 밖(표준 `STATIC_ROOT`)에 생성됨
+- 실제 소켓 리스너 프로세스: `manage.py runserver 127.0.0.1:18142`(PID 16260, `netstat`으로 확인 후 종료) — 파일이 아닌 프로세스이므로 별도 기록
+- (세션 중 발생한 부수 사고) 이 addendum 작업 도중, 특정 파일 생성을 기다리는 busy-loop 형태의 셸 프로세스(PID 4505)를 실수로 백그라운드에 띄웠다가 다음 도구 호출 시점에 즉시 발견해 강제 종료했다 — `.harness-tmp/`나 저장소 파일을 전혀 건드리지 않는 순수 CPU 대기 루프였으므로 데이터/아티팩트 영향은 없었으나, 투명성을 위해 그대로 기록한다.
+
+### A-7-2. 위 아티팩트를 전부 `.harness-tmp/` 하위에서만 생성했는가 (규칙 K 1번)
+**[x] 예.** `webapp/staticfiles/`는 원본 §7-2와 동일한 이유(collectstatic 표준 산출 경로, `.gitignore` 추적 제외)로 예외이며, 정리 단계에서 완전히 삭제했다.
+
+### A-7-3. 정리(삭제) 완료 여부
+- `webapp/.harness-tmp/` 전체 삭제 완료(`rm -rf`) — venv/DB 2개/settings 패키지/env 파일/E2E 스크립트/로그 전부 포함.
+- `webapp/staticfiles/` 삭제 완료.
+- 리스닝 프로세스 PID 16260을 `taskkill /F`로 종료, `netstat -ano`로 18142 포트에 `LISTENING` 상태가 없음을 재확인(`TIME_WAIT`만 남음 — TCP 표준 종료 대기 상태, 원본 §7-3과 동일 해석).
+- busy-loop 프로세스(PID 4505)는 발견 즉시 강제 종료, 재확인 완료.
+
+### A-7-4. 정리 후 `git status` 실행 결과 (그대로 첨부)
+```
+ M .github/workflows/neon-db-backup.yml
+ M docs/harness/03-system-design.md
+ M docs/harness/04-ux-design.md
+ M docs/harness/10-deploy-test.md
+ M docs/harness/decisions.md
+ M docs/harness/feature-WU-01-integration-test.md
+ M docs/harness/feature-WU-06-integration-test.md
+ M docs/harness/feature-WU-08-integration-test.md
+ M docs/harness/feature-WU-10-integration-test.md
+ M docs/harness/traceability.md
+ M docs/harness/units/unit-01-note.md
+ M docs/harness/units/unit-01-test.md
+ M docs/harness/units/unit-06-note.md
+ M docs/harness/units/unit-06-test.md
+ M docs/harness/units/unit-08-note.md
+ M docs/harness/units/unit-08-test.md
+ M docs/harness/units/unit-10-note.md
+ M docs/harness/units/unit-10-test.md
+ M docs/harness/verify-log_03-system-design.md
+ M docs/harness/verify-log_04-ux-design.md
+ M docs/harness/verify-log_10-deploy-test.md
+ M webapp/.env.example
+ M webapp/blog/templates/blog/blog_post_page.html
+ M webapp/blog/views.py
+ M webapp/config/settings/base.py
+ M webapp/config/static/css/components.css
+ M webapp/config/templates/base.html
+ M webapp/config/urls.py
+ M webapp/core/context_processors.py
+ M webapp/core/tests.py
+ M webapp/legal/templates/legal/legal_page.html
+?? .gitattributes
+?? docs/harness/11-admin-manual.md
+?? docs/harness/11-api-reference.md
+?? docs/harness/11-ops-handoff-runbook.md
+?? docs/harness/11-user-manual.md
+?? docs/harness/final-comments-feature-verification.md
+?? docs/harness/final-content-workflow-verification.md
+?? docs/harness/verify-log_11-admin-manual.md
+?? docs/harness/verify-log_11-api-reference.md
+?? docs/harness/verify-log_11-ops-handoff-runbook.md
+?? docs/harness/verify-log_11-user-manual.md
+?? webapp/blog/tests.py
+?? webapp/comments/
+?? webapp/config/static/js/comments.js
+?? webapp/core/migrations/0002_initial.py
+?? webapp/core/models.py
+?? webapp/legal/migrations/0003_add_comment_privacy_notice.py
+?? webapp/legal/tests.py
+```
+**해석**: 이 목록은 이번 addendum 세션이 **시작되기 전 스냅샷**(대화 시작 시 제공된 git status)과 **완전히 동일**하다(`docs/harness/traceability.md`/`docs/harness/decisions.md`가 이미 이 스냅샷에 modified로 잡혀 있었던 것은 이번 addendum이 두 파일을 갱신했기 때문이며, 이번 addendum 착수 이전부터 다른 미완료 문서화 작업(11단계 등)으로 인해 이미 modified/untracked 상태였던 파일들이었다 — `webapp/` 아래 코드 파일은 이번 addendum이 전혀 수정하지 않았다). 이번 세션이 생성한 모든 임시 아티팩트(venv/DB/settings/env/스크립트/staticfiles)가 흔적 없이 삭제되었음을 이 `git status` 결과가 직접 증명한다.
+
+### A-7-5. 이번 테스트 도중 강제 중단(TaskStop 등)이 있었는가
+**[x] 없음.** (단, A-7-1에 기록한 대로 세션 자체 실수로 만든 busy-loop 프로세스 1건을 발견 즉시 정리했다 — 사용자에 의한 강제 중단이 아니라 이번 addendum 작업자가 스스로 인지하고 즉시 해소한 사례임을 명확히 구분해 기록한다.)
+
+### A-7-6. Teardown 재확인
+```
+$ bash automation/harness-janitor.sh --check
+[janitor] 점검 대상 저장소: C:/big21/vibe-coding/AI-AUTO-WORK
+[janitor] .harness-tmp/ 는 비어있거나 없습니다 — 이상 없음.
+[janitor] 잔여 임시 아티팩트 없음 — 다음 단계 진행 가능.
+```
+
+**위 A-7-1~A-7-6이 모두 완료·확인되었으므로 §A-9에서 PASS로 판정한다(규칙K 2번 충족).**
+
+## A-8. 리스크 및 잔존 이슈
+
+1. **실제 브라우저/실제 gunicorn/실제 Neon·R2·GitHub Actions 미검증** — 원본 §8-1~3과 완전히 동일한 사유로 이번 addendum도 동일하게 이월된다(신규 리스크 아님).
+2. **댓글 등록 알림의 실제 SMTP 발송 성공 여부 미검증** — `final-comments-feature-verification.md` 부록이 이미 명시한 이월 항목을 그대로 승계(§A-5).
+3. **댓글 모더레이션 알림 채널이 500 에러 알림과 동일 채널(`DJANGO_ADMIN_EMAIL`)을 공유** — 댓글이 몰리면 알림 폭주로 운영자가 진짜 500 에러를 놓칠 가능성은 `final-comments-feature-verification.md`가 이미 리스크로 인지했고(§8), 이번 addendum이 새로 발견한 사실은 아니다. 그대로 승계.
+4. **Python 버전 차이(3.12→3.13)**: 이번 세션 환경에 `py -3.12`가 더 이상 감지되지 않아 Python 3.13.15로 검증했다(§A-3). `pip freeze`로 패키지 버전이 `requirements.txt` 고정값과 정확히 일치함을 확인해 재현성 문제는 없었으나, **실제 배포/CI 환경의 Python 버전이 3.12로 고정되어 있는지 3.13까지 허용하는지는 이번 addendum 범위 밖**이다 — 10단계 배포 파이프라인 설정(`render.yaml`/`runtime.txt` 등)에서 재확인 권고.
+5. **캐시 지연(CACHE-C03)**: 댓글 승인/거부 직후 최대 `VIEW_CACHE_SECONDS`(5~15분)만큼 공개 페이지에 반영이 지연될 수 있다 — 결함이 아니라 기존 캐시 정책(DEC-012)의 일관된 연장이며, `11-ops-handoff-runbook.md`가 이미 콘텐츠 삭제/수정 지연에 대해 동일하게 인지시켰다(범위를 댓글까지 넓혀 인지 권고).
+
+## A-9. 결론 및 판정
+
+- [x] **PASS** — 9단계(보안검증)로 handoff 가능(A-7절 Teardown 확인 완료가 전제조건 — 전체 충족)
+
+**판정 근거**: §A-4의 전체 앱 기동(SYS-C01~17)·방문자 E2E(E2E-C01~24)·실제 소켓(RS-C01)·캐시 상호작용(CACHE-C01~03)·성능 참고치(PERF-C01) 전 항목 PASS, 신규 결함 0건(§A-6), traceability.md REQ-019 "전체테스트(08)" 컬럼 갱신 완료(§A-5), Teardown 완전 확인(§A-7). 오케스트레이터가 명시한 6개 확인 항목(마이그레이션 체인/INSTALLED_APPS 회귀/전체 공개 라우트/전체 왕복/한글 슬러그/캐시 상호작용)을 전부 실측 근거로 충족했다. 이로써 DEC-048이 남긴 갭("08단계 특유의 전체 조립 상태 E2E 관점 미실행")이 해소되었다 — REQ-019는 이제 09단계(보안검증)로 넘어갈 수 있는 상태다. 09단계는 이 addendum이 다루지 않은 보안 카테고리(인증/인가, 인젝션 전수, 시크릿 노출, 의존성 CVE, 개인정보 컴플라이언스 심화)를 REQ-019 범위까지 확장해 별도로 수행해야 한다(원본 `09-security-audit.md`가 REQ-019 착수 이전에 완료된 산출물이므로, 09단계도 이 갭을 인지하고 착수해야 함 — 오케스트레이터에게 인계).
+
+## A-10. 내부 검증 (최소 2회)
+
+- Tier: Standard(§A-1) → 2회 검증 필수(예외 소멸 조항 해당 없음).
+- **1차 검증(작성자 관점)**: 오케스트레이터가 명시한 6개 확인 항목이 §A-4에 빠짐없이 케이스로 매핑됐는지 자가 재검토 — 매핑 확인(마이그레이션 체인=A-4-1, INSTALLED_APPS=A-4-2, 공개 라우트=A-4-3, 전체 왕복=A-4-4, 한글 슬러그=A-4-5, 캐시=A-4-6). 원본 §1~§10을 덮어쓰지 않고 append로만 추가했는지 파일 라인 수로 재확인(원본 라인 1~304 변경 없음, 신규 섹션만 append됨) — 규칙F/규칙C 준수 확인. Python 버전 차이(3.12→3.13)를 숨기지 않고 §A-3/§A-8-4에 투명하게 기록했는지 재확인. 결함 0건.
+- **2차 검증(독립 심사자 관점 — "9단계 보안검증 담당자가 이 addendum만 보고 착수 여부를 판단")**: (a) §A-9가 "09단계는 REQ-019까지 범위를 확장해야 한다"는 사실을 숨기지 않고 명시적으로 인계했는가 — 명시됨. (b) E2E-C19(SMTP 예외)를 결함처럼 보이는 관찰을 그대로 숨기지 않고 원인·설계 의도와 함께 투명하게 기록했는가 — §A-4-4/§A-6에 명시. (c) busy-loop 프로세스 실수(A-7-1)를 감추지 않고 투명하게 기록했는가 — 명시됨, 데이터/아티팩트 영향 없음도 함께 확인. (d) traceability.md REQ-019 행이 실제로 갱신되었는가 — `docs/harness/traceability.md` 파일 자체에서 재확인(§A-5). 결함 0건.
+- 검증 로그 파일 경로: `docs/harness/verify-log_08-full-system-test.md`("재작업 addendum" 절)
+
+## 절차 흐름 (참고용 다이어그램, addendum)
+
+```mermaid
+flowchart TD
+    A["DEC-048 갭: REQ-019가 08 미실행 상태로 남음"] --> B["신규 venv+빈 DB, 마이그레이션 체인 처음부터(A-4-1)"]
+    B --> C["INSTALLED_APPS 회귀 확인(A-4-2)"]
+    C --> D["전체 공개 라우트 스모크(A-4-3)"]
+    D --> E["작성→발행→댓글→모더레이션→공개 전체 왕복(A-4-4)"]
+    E --> F["한글 슬러그 회귀 독립 재확인(A-4-5)"]
+    F --> G["캐시 상호작용 코드검토+실측(A-4-6)"]
+    G --> H{신규 결함?}
+    H -->|No| I["Teardown(A-7) + traceability REQ-019 갱신(A-5)"]
+    I --> J["내부검증 2회(A-10)"]
+    J -->|PASS| K["PASS → 9단계로 handoff(REQ-019 범위 포함해 착수 필요)"]
 ```

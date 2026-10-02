@@ -10,12 +10,15 @@ from unittest import mock
 from django.contrib.auth import get_user_model
 from django.contrib.auth.models import Group
 from django.core.cache import cache
+from django.core.exceptions import ValidationError
 from django.core.management import call_command
-from django.test import Client, RequestFactory, TestCase
+from django.test import Client, RequestFactory, TestCase, override_settings
 from django.urls import reverse
 
 from config.middleware import XForwardedForMiddleware
 from core.admin_auth import RATE_LIMIT_MAX_ATTEMPTS, RateLimitedLoginView
+from core.models import SiteSettings
+from wagtail.models import Site
 
 User = get_user_model()
 
@@ -373,3 +376,164 @@ class EnsureSuperuserCommandTests(TestCase):
         )
         self.assertFalse(User.objects.filter(username="weak-admin").exists())
         self.assertIn("비밀번호 정책", output)
+
+
+@override_settings(
+    SECURE_SSL_REDIRECT=True,
+    SECURE_REDIRECT_EXEMPT=[r"^healthz$"],
+)
+class HealthzHttpsRedirectExemptTests(TestCase):
+    """DEF-10-01(10단계 배포테스트, TC-004) 회귀 방지 테스트.
+
+    production.py는 `SECURE_SSL_REDIRECT=True` + `SECURE_REDIRECT_EXEMPT=[r"^healthz$"]`
+    조합으로 `/healthz`만 HTTPS 강제 리다이렉트에서 예외 처리한다(Render 헬스체크
+    프로브가 X-Forwarded-Proto 헤더 없이 직접 접속해도 301 대신 200을 받게 하기
+    위함). `Client()`를 `override_settings` 적용 범위 안에서 생성해야
+    `SecurityMiddleware`가 이 설정값으로 다시 초기화된다(Django의
+    `ClientHandler`는 인스턴스 생성 시점에 미들웨어 체인을 로드하므로, 이미
+    만들어진 Client를 재사용하면 override가 반영되지 않는다)."""
+
+    def setUp(self):
+        self.client = Client()
+
+    def test_healthz_returns_200_without_forwarded_proto_header(self):
+        response = self.client.get("/healthz")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.content, b"ok")
+
+    def test_non_exempt_path_still_redirected_to_https(self):
+        """대조군 — 예외 목록에 없는 경로는 여전히 301로 HTTPS 강제되어야
+        한다(SECURE_REDIRECT_EXEMPT가 전역이 아니라 healthz 한정임을 확인)."""
+        response = self.client.get("/robots.txt")
+        self.assertEqual(response.status_code, 301)
+        self.assertTrue(response["Location"].startswith("https://"))
+
+    def test_healthz_with_forwarded_proto_https_also_200(self):
+        """`X-Forwarded-Proto: https` 헤더가 붙어 오는 경우(Render 엣지를 거친
+        일반 트래픽 재현)에도 여전히 200이어야 한다 — 예외 처리가 헤더 유무와
+        무관하게 항상 성립하는지 확인(회귀 방지, 헤더 존재가 예외 로직을
+        깨지 않음을 명시적으로 남김)."""
+        response = self.client.get("/healthz", HTTP_X_FORWARDED_PROTO="https")
+        self.assertEqual(response.status_code, 200)
+
+
+class AdsTxtTests(TestCase):
+    """DEC-053 — ads.txt는 adsense_client_id가 비어 있으면 404, 채워지면
+    구글이 요구하는 형식(`google.com, pub-<id>, DIRECT, f08c47fec0942fa0`)
+    으로 응답해야 한다. legal/tests.py의 contact_email 테스트와 동일하게
+    캐시를 매번 초기화한다(같은 프로세스에서 값을 바꿔가며 검증하므로)."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.site = Site.objects.get(is_default_site=True)
+
+    def _set_client_id(self, value):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = value
+        settings_obj.save()
+
+    def test_404_when_unset(self):
+        response = self.client.get("/ads.txt")
+        self.assertEqual(response.status_code, 404)
+
+    def test_200_with_expected_line_when_set(self):
+        self._set_client_id("ca-pub-1234567890123456")
+        response = self.client.get("/ads.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response["Content-Type"], "text/plain")
+        self.assertEqual(
+            response.content.decode(),
+            "google.com, pub-1234567890123456, DIRECT, f08c47fec0942fa0",
+        )
+
+    def test_value_without_ca_prefix_still_works(self):
+        """운영자가 'ca-' 접두어 없이 붙여넣는 실수를 해도 500이 나지 않고
+        그 값을 그대로 게시자 ID로 취급한다(관대한 입력 처리)."""
+        self._set_client_id("pub-9999999999999999")
+        response = self.client.get("/ads.txt")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.content.decode(),
+            "google.com, pub-9999999999999999, DIRECT, f08c47fec0942fa0",
+        )
+
+
+class AdsenseScriptTagTests(TestCase):
+    """DEC-053 — base.html의 애드센스 스크립트 태그가 adsense_client_id
+    설정 여부에 따라 정확히 켜지고 꺼지는지 확인한다."""
+
+    def setUp(self):
+        cache.clear()
+        self.client = Client()
+        self.site = Site.objects.get(is_default_site=True)
+
+    def _set_client_id(self, value):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = value
+        settings_obj.save()
+
+    def test_no_script_tag_when_unset(self):
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"adsbygoogle.js", response.content)
+
+    def test_script_tag_rendered_when_set(self):
+        self._set_client_id("ca-pub-1234567890123456")
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertIn(b"adsbygoogle.js?client=ca-pub-1234567890123456", response.content)
+
+    def test_malicious_value_is_html_escaped_not_executed(self):
+        """DEC-056 보안점검(SEC-26) — 어드민 필드에 스크립트 삽입을 시도해도
+        Django 자동이스케이프로 무력화되는지 실측 확인한다(자유 텍스트 필드에
+        `full_clean()`을 거치지 않는 `.save()`로 값을 직접 넣어, 폼 검증보다
+        더 관대한 경로로도 렌더링 단계에서 안전한지 확인).
+
+        페이로드는 `adsense_client_id`의 실제 `max_length=32` 이내로 맞춘다
+        — SQLite는 VARCHAR 길이를 타입 힌트로만 취급해 강제하지 않지만,
+        실제 배포 대상인 Postgres는 DB 레이어에서 엄격히 강제한다(2026-09-29,
+        로컬 Postgres 전환 중 실측 발견). 32자를 넘기면 이 테스트가 검증하려는
+        "템플릿 자동이스케이프" 단계에 도달하기도 전에 DB가 `DataError`로
+        `.save()` 자체를 거부해, Postgres에서는 이 테스트가 의도와 달리
+        햇갈리게 실패한다(실제로는 더 안전한 상태 — DB 제약이 먼저 막아주는
+        것 — 인데 테스트 자체가 그 상태를 확인하지 못하는 것뿐)."""
+        payload = 'ca-pub-1"><script>x</script>'
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = payload
+        settings_obj.save()
+
+        response = self.client.get("/")
+        self.assertEqual(response.status_code, 200)
+        self.assertNotIn(b"<script>x</script>", response.content)
+        self.assertIn(b"&lt;script&gt;x&lt;/script&gt;", response.content)
+
+
+class AdsenseClientIdValidationTests(TestCase):
+    """DEC-056 — 형식이 이상한 값은 어드민 폼(모델 `full_clean()`) 단계에서
+    저장 자체가 거부되어야 한다(ads.txt 응답 오염/스크립트 로딩 실패 예방)."""
+
+    def setUp(self):
+        self.site = Site.objects.get(is_default_site=True)
+
+    def test_valid_format_passes_full_clean(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = "ca-pub-1234567890123456"
+        settings_obj.full_clean()  # 예외 없이 통과해야 함
+
+    def test_blank_passes_full_clean(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = ""
+        settings_obj.full_clean()
+
+    def test_embedded_newline_rejected(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = "ca-pub-123\nEvilLine"
+        with self.assertRaises(ValidationError):
+            settings_obj.full_clean()
+
+    def test_missing_prefix_rejected(self):
+        settings_obj = SiteSettings.for_site(self.site)
+        settings_obj.adsense_client_id = "pub-1234567890123456"
+        with self.assertRaises(ValidationError):
+            settings_obj.full_clean()

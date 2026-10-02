@@ -190,3 +190,14 @@ TOC 앵커는 `slugify(text, allow_unicode=True)`로 한글 제목을 그대로 
 ## 9. 다음 단계
 
 이 노트 작성 완료 후 **6단계(`06-unit-tester`) 호출을 트리거한다** — 위 §8의 1~19번 인수 조건을 입력으로 `docs/harness/units/unit-06-test.md`를 작성하도록 한다. 6단계가 PASS 판정하면, 02-planning.md §9 계획에 따라 이 업무 단위(WU-06)의 7단계(통합테스트, WU-01/04/05와의 조립 검증 포함) 착수 여부를 오케스트레이터가 판단한다.
+
+---
+
+## 10. 재작업 라운드 2 (규칙F, `SiteSettings.contact_email` 소비, 2026-09-25, DEC-045)
+
+- **근거/모델 신설 배경**: `unit-08-note.md` §10 참고(WU-08 소유 `core.models.SiteSettings.contact_email` 신설 — 11단계 사용자 매뉴얼 작성 중 발견된 "개인정보처리방침 문의처에 실제 연락처 없음" 격차 해소, 사용자 확인 후 진행).
+- **이번 WU-06 변경**: `webapp/legal/templates/legal/legal_page.html`에 `{% if page.slug == "privacy-policy" and contact_email %}` 조건으로 연락처(`mailto:` 링크) 블록을 body 아래에 추가했다. `page.slug`로 분기해 이용약관/쿠키 고지 페이지에는 영향이 없다(그 페이지들은 "문의처" 절 자체가 없으므로 무관한 정보를 섞지 않음). `contact_email`이 비어 있으면(기본값) 블록 자체가 렌더링되지 않아 기존 화면과 100% 동일하다.
+- **`legal/migrations/0002_create_legal_pages.py`(본문 콘텐츠)는 변경하지 않았다** — "문의처" 절의 안내 문구("사이트 운영자에게 연락해 주시기 바랍니다")는 그대로 유지하고, 실제 이메일은 템플릿이 그 아래에 동적으로 붙인다. 이렇게 분리한 이유: 데이터 마이그레이션(법률 문구, 향후 실제 법률 자문 시 재검토 대상)과 운영 설정값(연락처, 언제든 바뀔 수 있음)을 같은 것으로 취급하지 않기 위함 — 연락처가 바뀔 때마다 새 데이터 마이그레이션을 만들 필요가 없다.
+- **신규 테스트**: `webapp/legal/tests.py`(신규 파일, 이 앱에 테스트 파일이 없었음) — `PrivacyPolicyContactEmailTests` 4케이스(미설정 시 블록 없음 / 설정 시 mailto 렌더링 / 약관 페이지에는 미노출 / 쿠키 페이지에는 미노출). `LegalPage.serve()`가 `cache_page(10분)`이므로(§ 기존 서술과 동일한 03 §2.5/DEC-012 정책) 테스트마다 `cache.clear()`로 초기화해 캐시 오염으로 인한 거짓 PASS/FAIL을 방지했다(WU-09 `AdminLoginRateLimitTests`와 동일한 패턴).
+- **로컬 검증**: `unit-08-note.md` §10과 동일한 세션에서 함께 수행 — `manage.py test legal.tests`(4케이스 개별 PASS) + 전체 회귀 `manage.py test`(42케이스 OK).
+- **하위 단계 재실행(규칙F-3)**: 6단계(`unit-06-test.md` addendum) → 7단계(`feature-WU-06-integration-test.md` addendum). 8/9단계 재실행 불필요 판단 근거는 `unit-08-note.md` §10과 동일(신규 필드 기본값이 기존 화면을 바꾸지 않음, 전체 회귀로 실측 확인, XSS/인젝션 표면 추가 없음).

@@ -329,3 +329,54 @@ Windows 로컬 환경에는 `pg_dump`/`aws` CLI/`actionlint`가 전혀 설치되
 (통합테스트) 착수 여부와, 10단계(배포테스트)에서 실제 실행을 검증하는
 일정을 오케스트레이터가 판단한다. 이번 세션 범위는 WU-10까지이며 WU-11은
 착수하지 않았다.
+
+---
+
+## 10. 재작업 이력 (규칙 F, 라운드 2 — DEF-10-03, 2026-09-25)
+
+- **근거**: `docs/harness/10-deploy-test.md` TC-013/TC-014가 실제로 재현한
+  **DEF-10-03(Medium, CONDITIONAL PASS 조건 2번)** — `.github/workflows/
+  neon-db-backup.yml`이 `apt-get install postgresql-client`로 설치하는
+  Ubuntu 기본 저장소 버전(당시 실측 v15.19)이 실제 Neon DB 서버 메이저
+  버전(테스트 환경 v16.14)보다 낮으면 `pg_dump`가 "server version mismatch"로
+  **100% 실패**한다. 위 §8 인수조건 11번이 이미 "로컬에 `pg_dump`가 없어
+  검증 불가"로 정직하게 남겨두었던 리스크가, 10단계의 실제 GitHub Actions
+  등가 환경 재현에서 그대로 실증된 것이다.
+- **조치**: `.github/workflows/neon-db-backup.yml`의 "Install PostgreSQL
+  client" 스텝을 Ubuntu 기본 apt 저장소 대신 **PostgreSQL 공식 APT 저장소
+  (PGDG, `apt.postgresql.org`)** 를 등록해 항상 최신 메이저 버전의
+  `postgresql-client`를 설치하도록 변경했다(10단계 §6 DEF-10-03 조치 권고안
+  그대로 채택). `pg_dump`는 자신보다 새 서버를 지원하지 않지만 자신보다
+  낮은/같은 서버는 지원하므로(공식 문서), client를 항상 "가장 최신"으로
+  유지하면 Neon이 어떤 최신 PostgreSQL 메이저 버전을 쓰든 구조적으로
+  역전(server > client)이 발생하지 않는다.
+- **재현 및 재검증(Docker, `.harness-tmp/wu10-def03-verify`, 규칙K 준수)**:
+  1. `postgres:17`(서버 역할, 로컬에 실제 Neon보다 최신 버전이 나온 상황을
+     의도적으로 재현) + `ubuntu:24.04`(GitHub Actions `ubuntu-latest`와 동일
+     베이스) 컨테이너를 전용 Docker 네트워크로 연결.
+  2. **수정 전 재현**: 기존 스텝 그대로(`apt-get install postgresql-client`)
+     실행 → `pg_dump (PostgreSQL) 16.15`. 이 클라이언트로 `postgres:17`에
+     `pg_dump` 시도 → **`pg_dump: error: aborting because of server version
+     mismatch / server version: 17.11 ... pg_dump version: 16.15`,
+     종료코드 1** — DEF-10-03이 서술한 실패가 그대로 재현됨을 먼저 실증.
+  3. **수정 후 검증**: 새 스텝(`postgresql-common` + PGDG 저장소 등록 + `apt-get
+     install postgresql-client`) 실행 → `pg_dump (PostgreSQL) 18.6`(서버
+     17.11보다 최신). 동일 대상에 `pg_dump --no-owner --no-privileges --clean
+     --if-exists --verbose | gzip` 실행 → **종료코드 0**, 생성된 백업 안에
+     사전 삽입한 프로브 데이터(`wu10-def03-probe`)가 그대로 포함됨을
+     `zcat | grep`으로 확인.
+  4. **정리(규칙K)**: 컨테이너 3개/네트워크 1개 전부 `docker rm -f`/`docker
+     network rm`으로 삭제, `.harness-tmp/wu10-def03-verify` 삭제 후
+     `automation/harness-janitor.sh --check` 재확인 — 잔여물 없음.
+- **YAML 문법 확인**: 수정한 워크플로 파일을 `yaml.safe_load()`로 파싱해
+  문법 오류 없음을 확인(actionlint는 이전 라운드에서 이미 기검증되었고
+  이번 변경은 `run:` 스크립트 내부 로직만 바꾼 것이라 재실행 불필요,
+  규칙B "레이어별 책임 분리").
+- **회귀 확인**: 이 워크플로의 다른 스텝(시크릿 사전점검/dump 크기
+  확인/R2 lifecycle/업로드/검증/정리)은 이번 변경 범위 밖이며 손대지
+  않았다(diff 확인, "Install PostgreSQL client" 스텝만 변경).
+- **별도 DEC 필요 여부**: 있음 — DEC-044(decisions.md)로 WU-01(DEF-10-01)과
+  함께 통합 기록.
+- **하위 단계 재실행(규칙F-3)**: 6단계(`unit-10-test.md`에 이번 회귀 확인
+  결과 반영) → 7단계(`feature-WU-10-integration-test.md`에 addendum) →
+  10단계(`10-deploy-test.md` §9 조건 2번 해소 처리).

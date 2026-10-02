@@ -110,3 +110,11 @@ flowchart TD
     E -->|No, :80은 Low로 판정| G["verification-log 2회 이상(9절)"]
     G -->|PASS| H["PASS 판정 → 07단계(통합테스트) 진행"]
 ```
+
+---
+
+## 부록 — 재작업 라운드 2 (규칙F, `contact_email` 소비, 2026-09-25)
+
+- **신규 AC**: `unit-06-note.md` §10 참고 — `legal.tests.PrivacyPolicyContactEmailTests` 4케이스(미설정 시 미노출 / 설정 시 mailto 렌더링 / 약관·쿠키 페이지 미노출 2건).
+- **실행 결과**: 4케이스 개별 PASS, 전체 회귀 42케이스 OK(`unit-08-note.md` §10 인용). 캐시(`cache_page` 10분) 오염 방지를 위해 `setUp()`에서 `cache.clear()` 수행함을 확인 — 기존 WU-09 레이트리밋 테스트와 동일 패턴.
+- **판정**: PASS — 다음 단계는 7단계(`feature-WU-06-integration-test.md`) addendum.

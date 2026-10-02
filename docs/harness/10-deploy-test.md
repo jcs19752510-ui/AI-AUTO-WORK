@@ -1,8 +1,13 @@
 # 10단계 — 배포테스트 결과서
 
-- 문서 버전: v1.0
+- 문서 버전: v1.0 (본문) + 재검증 addendum(§11, 2026-09-25) + 재검증 addendum(§13/§14, 2026-09-28)
 - 작성 일시(KST): 20260918 013454
 - 작성 에이전트: 10-deploy-tester
+
+> **최종 판정 갱신(규칙F 재작업, 2026-09-25)**: 아래 §1~§10(원본, 2026-09-18 작성)은 **CONDITIONAL PASS**로 판정했다 — 12단계 착수 전 필수 조건 2건(DEF-10-01 High, DEF-10-03 Medium)이 미해결이었기 때문이다. 이후 규칙F 재작업(05단계 WU-01/WU-10 라운드2, DEC-044, `unit-01-note.md` §0-2/§4-2, `unit-10-note.md` §10, `03-system-design.md` v1.4)이 두 조건을 모두 해소했고, **이 문서 맨 아래 §11 "재검증(규칙F 재작업)"이 그 재작업의 최종 확인 단계로서 독립적으로 재검증**했다. 결론: **DEF-10-01/DEF-10-03 Fixed 확인, 신규 결함 없음 → 최종 판정 PASS로 갱신**(§9 조건 3번 DEF-10-02/04/05는 원래도 비차단이며 11단계 Runbook 반영 권고로 그대로 승계). 원본 §1~§10은 최초 작성 당시 기록 그대로 보존하며(수정하지 않음), 최신 판정 근거는 §11을 따른다.
+
+> **[2026-09-28 추가] 재검증 addendum (§13/§14) - comments/adsense/spam-defense 반영 - CONDITIONAL PASS**: §1~§12(WU-01~10 범위) PASS 확정 이후 추가된 comments(REQ-019)/adsense_client_id(REQ-023)/댓글 스팸차단(DEC-055) 3개 기능을 배포 파이프라인 관점(10단계 고유 책임)에서 재검증했다. 결과: Critical 결함 1건(DEF-10-06 - legal 신규 데이터 마이그레이션이 실제 Postgres에서 migrate 전체를 크래시시킴, 12단계 착수 전 필수 해결) + Low 1건(DEF-10-07, 비차단) 발견. §1~§12는 원문 그대로 보존하며 최신 addendum 판정은 §13.10/§14를 따른다.
+
 
 > 본 결과서는 `templates/test-report-template.md` 양식을 그대로 따른다. 본 단계는 **실제 프로덕션 배포를 수행하지 않는다**(12단계, 사용자 명시적 승인 필요 — 규칙E). 목적은 빌드 스크립트·배포 설정·환경변수·롤백 절차·모니터링/알림 채널을 스테이징(로컬 Docker 재현) 관점에서 실측 검증하는 것이다.
 
@@ -93,13 +98,17 @@
 
 | ID | 설명 | 재현 절차 | 심각도 | 상태 | 조치 내용 |
 |----|------|-----------|--------|------|-----------|
-| DEF-10-01 | `/healthz`가 `X-Forwarded-Proto: https` 헤더 없이 요청되면 `SECURE_SSL_REDIRECT=True`에 의해 301로 리다이렉트된다(TC-004). 이 동작 자체는 WU-08 통합테스트(IT-11)가 이미 "의도된 동작"으로 PASS 확정한 것과 동일하다 — **새로운 버그가 아니라, 이 의도된 동작이 Render의 실제 헬스체크 프로브 요청 방식에 의존한다는 사실이 어느 단계에서도 명시적으로 검증되지 않았다는 것이 이번에 새로 드러난 점**이다. Render의 zero-downtime 배포는 `healthCheckPath`가 200을 반환해야 신규 인스턴스로 트래픽을 전환하는데, 만약 Render의 헬스체크 프로브가 (일반 사용자 트래픽과 달리) TLS-종료 엣지를 거치지 않고 인스턴스에 직접 HTTP로 접속하며 `X-Forwarded-Proto` 헤더를 붙이지 않는다면, 이 서비스는 **최초 배포부터 헬스체크를 영원히 통과하지 못해 배포 자체가 막힐 수 있다.** | TC-004(§4) | **High** | Open — 코드 수정은 5단계(개발) 소관, 근본원인은 03 §4(`/healthz` 계약, WU-08 소유)와 §5.5.2(HTTPS 강제, WU-01 소유)가 서로를 참조하지 않은 설계 공백(3단계). 이번 10단계는 검증 전담이라 직접 코드를 고치지 않는다 | **12단계 착수 전 필수 조치 권고**: (a) `production.py`에 `SECURE_REDIRECT_EXEMPT = [r"^healthz$"]` 추가(헬스체크는 민감정보 없는 "ok" 응답뿐이라 HTTPS 강제 예외로 인한 보안 손실 없음, 03 §4가 이미 "내부용"으로 분류) — 이러면 Render의 실제 헤더 처리 방식과 무관하게 항상 안전. 또는 (b) Render 공식 문서/지원팀에 헬스체크 프로브의 헤더 처리 방식을 명시적으로 확인. 오케스트레이터 판단으로 규칙F(3+5단계 소범위 재작업) 여부 결정 권고 |
+| DEF-10-01 | `/healthz`가 `X-Forwarded-Proto: https` 헤더 없이 요청되면 `SECURE_SSL_REDIRECT=True`에 의해 301로 리다이렉트된다(TC-004). 이 동작 자체는 WU-08 통합테스트(IT-11)가 이미 "의도된 동작"으로 PASS 확정한 것과 동일하다 — **새로운 버그가 아니라, 이 의도된 동작이 Render의 실제 헬스체크 프로브 요청 방식에 의존한다는 사실이 어느 단계에서도 명시적으로 검증되지 않았다는 것이 이번에 새로 드러난 점**이다. Render의 zero-downtime 배포는 `healthCheckPath`가 200을 반환해야 신규 인스턴스로 트래픽을 전환하는데, 만약 Render의 헬스체크 프로브가 (일반 사용자 트래픽과 달리) TLS-종료 엣지를 거치지 않고 인스턴스에 직접 HTTP로 접속하며 `X-Forwarded-Proto` 헤더를 붙이지 않는다면, 이 서비스는 **최초 배포부터 헬스체크를 영원히 통과하지 못해 배포 자체가 막힐 수 있다.** | TC-004(§4) | **High** | **Fixed (2026-09-25, §11 재검증 참고)** — ~~Open~~. 근본원인은 03 §4(`/healthz` 계약, WU-08 소유)와 §5.5.2(HTTPS 강제, WU-01 소유)가 서로를 참조하지 않은 설계 공백(3단계) | **12단계 착수 전 필수 조치 권고**: (a) `production.py`에 `SECURE_REDIRECT_EXEMPT = [r"^healthz$"]` 추가(헬스체크는 민감정보 없는 "ok" 응답뿐이라 HTTPS 강제 예외로 인한 보안 손실 없음, 03 §4가 이미 "내부용"으로 분류) — 이러면 Render의 실제 헤더 처리 방식과 무관하게 항상 안전. 또는 (b) Render 공식 문서/지원팀에 헬스체크 프로브의 헤더 처리 방식을 명시적으로 확인. 오케스트레이터 판단으로 규칙F(3+5단계 소범위 재작업) 여부 결정 권고. **→ (a) 채택, §11 참고** |
 | DEF-10-02 | `.env.example`이 `render.yaml`/`production.py`가 실제로 요구하는 환경변수 목록과 불일치 — `DJANGO_ADMIN_EMAIL`, `DJANGO_SUPERUSER_USERNAME/EMAIL/PASSWORD`, `EMAIL_HOST/HOST_USER/HOST_PASSWORD/PORT/USE_TLS`, `SERVER_EMAIL` 총 10개가 `.env.example`에 없다(`PYTHON_VERSION`은 플랫폼 변수라 제외 대상이 맞음). 코드가 `_require_env`로 강제하지 않아 기동 자체는 막지 않지만, 운영자가 `.env.example`을 "Render 대시보드에 입력할 체크리스트"로 삼을 경우 REQ-012(장애 알림)/DEC-030(최초 슈퍼유저 부트스트랩)에 필요한 값을 빠뜨릴 위험이 크다 | TC-010(§4) | Medium | Open | `.env.example`에 누락 10개 항목 + 설명 주석 추가 권고(5단계 또는 11단계 문서화 시 처리 가능, 코드 로직 변경 없음) |
-| DEF-10-03 | 백업 워크플로가 `apt-get install postgresql-client`로 설치하는 클라이언트 버전(현재 Debian 계열 기준 실측 v15.19)이 실제 DB 서버 메이저 버전(테스트 환경 postgres:16.14)보다 낮으면 `pg_dump`가 "server version mismatch"로 **100% 실패**한다(TC-013). BACKUP_RESTORE_GUIDE.md §6 항목2가 이미 "확인 필요"로 남겼던 리스크가 실제로 재현 가능함을 이번에 처음 실증했다. GitHub `ubuntu-latest`가 기본 제공하는 `postgresql-client` 버전이 실제 Neon 프로젝트의 PostgreSQL 서버 버전과 항상 일치한다는 보장이 없다(Neon은 프로젝트 생성 시 PG 메이저 버전을 선택할 수 있고 최신 버전을 계속 릴리스함) | TC-013(§4) | Medium | Open | 워크플로에 Neon 서버 버전에 맞는 `postgresql-client-<N>` 명시적 설치 스텝 추가, 또는 PostgreSQL 공식 APT 저장소(apt.postgresql.org) 사용 권고. **실패 시 GitHub이 기본 기능으로 이메일 알림을 보내므로(03 §7.2) "조용한 실패"는 아님** — 심각도를 Medium으로 제한하는 근거 |
+| DEF-10-03 | 백업 워크플로가 `apt-get install postgresql-client`로 설치하는 클라이언트 버전(현재 Debian 계열 기준 실측 v15.19)이 실제 DB 서버 메이저 버전(테스트 환경 postgres:16.14)보다 낮으면 `pg_dump`가 "server version mismatch"로 **100% 실패**한다(TC-013). BACKUP_RESTORE_GUIDE.md §6 항목2가 이미 "확인 필요"로 남겼던 리스크가 실제로 재현 가능함을 이번에 처음 실증했다. GitHub `ubuntu-latest`가 기본 제공하는 `postgresql-client` 버전이 실제 Neon 프로젝트의 PostgreSQL 서버 버전과 항상 일치한다는 보장이 없다(Neon은 프로젝트 생성 시 PG 메이저 버전을 선택할 수 있고 최신 버전을 계속 릴리스함) | TC-013(§4) | Medium | **Fixed (2026-09-25, §11 재검증 참고)** — ~~Open~~ | 워크플로에 Neon 서버 버전에 맞는 `postgresql-client-<N>` 명시적 설치 스텝 추가, 또는 PostgreSQL 공식 APT 저장소(apt.postgresql.org) 사용 권고. **실패 시 GitHub이 기본 기능으로 이메일 알림을 보내므로(03 §7.2) "조용한 실패"는 아님** — 심각도를 Medium으로 제한하는 근거. **→ PGDG 저장소 방식 채택, §11 참고** |
 | DEF-10-04 | 코드 롤백(Render "이전 배포로 롤백") 시, 롤백 대상이 DEF-09-01 수정(라운드2) 이전 커밋이면 관리자 로그인 무차별대입 방어가 **조용히 사라진다**(TC-018로 실증). 스키마/마이그레이션 리스크는 없음(TC-017/TC-021로 확인)이나, 이 보안 리트로그레션 가능성이 `BACKUP_RESTORE_GUIDE.md`/03 §7.3(롤백 전략)/`ADMIN_ACCESS_GUIDE.md` 어디에도 명시되어 있지 않다 | TC-017+TC-018(§4) | Low | Open | 11단계 운영 Runbook에 "롤백 실행 전 대상 커밋이 DEC-039~042(관리자 로그인 보안수정) 이후 버전인지 반드시 확인" 경고 추가 권고. **구체적 식별 기준(2차 내부검증에서 보강)**: 롤백 대상 배포에 `webapp/core/admin_auth.py`의 `RateLimitedAdminLoginView` 클래스와 `webapp/config/urls.py`의 `path("django-admin/login/", RateLimitedAdminLoginView.as_view(), ...)` 오버라이드가 존재하는지로 즉시 판별 가능(2026-09-17 라운드2 커밋 이후에만 존재) |
-| DEF-10-05 | 저장소에 `.gitattributes`가 없어(확인됨: 파일 부재), 로컬 git 설정이 `core.autocrlf=true`인 Windows 환경(이번 세션 실측 확인)에서 `git archive`/`checkout` 시 `build.sh`의 LF가 CRLF로 변환되어 셔뱅이 깨진다(TC-019로 실제 재현: `env: 'bash\r': No such file or directory`). Render의 실제 빌드는 Linux 러너에서 git clone하므로 직접 영향 가능성은 낮으나(Linux 기본 git은 통상 CRLF 변환을 하지 않음), 이 프로젝트가 WU-01~10 전 구간에서 반복적으로 "Windows 로컬 제약"에 부딪혀 온 이력을 고려하면 다른 기여자/운영자가 Windows에서 로컬 재현을 시도할 때 동일 문제를 반복해서 겪을 것이 확실하다 | TC-019(§4) | Low | Open | `.gitattributes`에 `*.sh text eol=lf` 추가 권고(5단계 또는 11단계 처리 가능, 런타임 동작 영향 없음) |
+| DEF-10-05 | 저장소에 `.gitattributes`가 없어(확인됨: 파일 부재), 로컬 git 설정이 `core.autocrlf=true`인 Windows 환경(이번 세션 실측 확인)에서 `git archive`/`checkout` 시 `build.sh`의 LF가 CRLF로 변환되어 셔뱅이 깨진다(TC-019로 실제 재현: `env: 'bash\r': No such file or directory`). Render의 실제 빌드는 Linux 러너에서 git clone하므로 직접 영향 가능성은 낮으나(Linux 기본 git은 통상 CRLF 변환을 하지 않음), 이 프로젝트가 WU-01~10 전 구간에서 반복적으로 "Windows 로컬 제약"에 부딪혀 온 이력을 고려하면 다른 기여자/운영자가 Windows에서 로컬 재현을 시도할 때 동일 문제를 반복해서 겪을 것이 확실하다 | TC-019(§4) | Low | **Fixed (2026-09-25)** — ~~Open~~ | `.gitattributes`에 `*.sh text eol=lf` 추가 권고(5단계 또는 11단계 처리 가능, 런타임 동작 영향 없음). **→ 채택, 저장소 루트에 `.gitattributes` 생성 완료. `git check-attr eol -- webapp/build.sh` → `eol: lf` 확인** |
 
-**결함 요약**: Critical 0건, High 1건(DEF-10-01), Medium 2건(DEF-10-02/03), Low 2건(DEF-10-04/05). Critical/High 결함이 배포 프로세스 자체(빌드/기동/헬스체크/롤백 플러밍)를 근본적으로 막지는 않지만(모든 핵심 배포 절차는 TC-001/002/005/006/007/014/015/016/017/021에서 PASS로 실증됨), DEF-10-01은 "실제 12단계 배포 성공 여부"에 영향을 줄 수 있는 미해결 리스크이므로 아래 §9에서 CONDITIONAL PASS로 판정한다.
+**결함 요약(원본, 2026-09-18)**: Critical 0건, High 1건(DEF-10-01), Medium 2건(DEF-10-02/03), Low 2건(DEF-10-04/05). Critical/High 결함이 배포 프로세스 자체(빌드/기동/헬스체크/롤백 플러밍)를 근본적으로 막지는 않지만(모든 핵심 배포 절차는 TC-001/002/005/006/007/014/015/016/017/021에서 PASS로 실증됨), DEF-10-01은 "실제 12단계 배포 성공 여부"에 영향을 줄 수 있는 미해결 리스크이므로 아래 §9에서 CONDITIONAL PASS로 판정한다.
+
+**결함 요약 갱신(§11 재검증, 2026-09-25)**: DEF-10-01(High)·DEF-10-03(Medium) **Fixed**. 잔존 Open: DEF-10-02(Medium)·DEF-10-04/05(Low) — 전부 비차단, 11단계 Runbook 반영 권고(§9 갱신 조건 참고).
+
+**결함 요약 재갱신(추가 검토 라운드, 2026-09-25)**: DEF-10-02(`.env.example`)·DEF-10-05(`.gitattributes`) 추가 **Fixed**. 잔존 Open: DEF-10-04(Low, 문서 경고로 대응 완료·코드 조치 불필요 항목).
 
 ## 7. 테스트 환경 정리(Teardown) 확인 — 규칙 K
 
@@ -146,7 +155,7 @@
 - **DEF-10-04/05(§6)**: 둘 다 Low지만 운영 연속성(롤백 시 보안 리스크 인지)과 재현성(Windows 기여자 반복 실패)에 영향을 주므로 11단계 Runbook에 반드시 반영 권고.
 - **DEC-038이 이미 이관한 항목**(KPI 애널리틱스/FAQ 비율 자동집계 도구 도입 여부)은 이번 10단계 범위가 아니며 그대로 11단계로 승계한다.
 
-## 9. 결론 및 판정
+## 9. 결론 및 판정 (원본, 2026-09-18 — §11 갱신 전)
 
 - [ ] PASS
 - [x] **CONDITIONAL PASS** — 조건:
@@ -157,8 +166,165 @@
 
 **판정 근거**: 빌드/기동/헬스체크(정상 경로)/관리자 인증 보안수정/장애 알림/R2 스토리지/백업/복구/롤백(스키마 안전성)이라는 배포 파이프라인의 핵심 절차는 전부 실제 도구로 실측 PASS했다(§4, Critical 결함 0건). 다만 DEF-10-01(High)이 "실제 12단계 배포의 성공 여부" 자체에 영향을 줄 수 있는 미해결 리스크이고, DEF-10-03(Medium)이 REQ-013(백업정책)을 무력화할 수 있는 재현 가능한 실패 시나리오이므로, 이 두 가지를 확인/해소하지 않은 채로 "완전한 PASS"로 넘기는 것은 20년차 운영자 관점에서 무책임하다고 판단했다(CLAUDE.md 페르소나: "롤백이 되지 않는 배포는 배포가 아니라 도박"과 동일한 원칙을 "헬스체크가 통과 못 하는 배포도 배포가 아니라 도박"에 적용). **11단계(문서화/인수인계)로는 그대로 handoff 가능**하다 — 11단계는 이 결과서와 조건을 있는 그대로 Runbook에 반영하는 것이 역할이며, 12단계(실배포, 사용자 승인 필요)만 위 조건 충족을 전제로 진행해야 한다.
 
+## 9-1. 결론 및 판정 갱신 (§11 재검증, 2026-09-25)
+
+- [x] **PASS**
+- [ ] CONDITIONAL PASS
+- [ ] FAIL
+
+**판정 근거**: 위 §9 조건 1·2(DEF-10-01/DEF-10-03, 12단계 착수 전 필수)가 §11의 독립 재검증으로 모두 **Fixed** 확인되었다 — DEF-10-01은 `SECURE_REDIRECT_EXEMPT` 코드와 03 §5.5.2-1(v1.4) 설계 근거·회귀 테스트(`HealthzHttpsRedirectExemptTests` 3케이스)가 갖춰졌고, DEF-10-03은 PGDG 기반 워크플로 수정이 "구버전 client+신버전 server" 실패 재현 후 해소됨을 Docker로 직접 실증했다. 조건 3(DEF-10-02/04/05, 비차단)은 원래도 12단계 착수를 막는 조건이 아니었으며 11단계 Runbook 반영 권고로 그대로 승계한다. **12단계(실배포) 착수 전 필수 조건이 모두 해소되었으므로, 이 시점부터는 CONDITIONAL PASS가 아니라 정식 PASS로 취급한다.** 단, §8의 잔존 리스크(실제 Render/Neon/R2/GitHub Actions 계정 부재로 인한 벤더 특유 동작 미검증)는 12단계 실배포 이후에만 관측 가능하다는 원본 판단이 여전히 유효하며, 이 PASS가 "12단계 이후 어떤 문제도 없다"는 보증은 아니다.
+
 ## 10. 내부 검증 (최소 2회)
 
 - 1차 검증 결과 요약: 체크리스트(빌드 재현성/환경변수·시크릿/무중단·헬스체크/롤백 실제 실행/마이그레이션 순서/모니터링·알림 채널 실제 연결) 6개 항목 전부 실측 수행 여부 확인 — 6/6 완료. DEF-10-01의 심각도 표기(Critical→High로 하향 조정, 근거: zero-downtime 배포 특성상 기존 서비스 다운타임을 유발하지 않음)를 1차 검증에서 재조정했다.
 - 2차 검증 결과 요약: "실제 배포 당일 새벽에 문제가 생기면 이 문서만 보고 롤백할 수 있는가" 관점에서 재검토 — §6 DEF-10-04/TC-017/TC-018이 "코드 롤백은 스키마 안전하지만 보안수정을 되돌릴 수 있다"는 사실을 명시적으로 남겨, 새벽 온콜 담당자가 이 문서만 보고도 "롤백해도 되는지/롤백 후 무엇을 해야 하는지"를 판단할 수 있음을 확인. §7 Teardown의 `git status` 전체 첨부가 요약 없이 그대로 포함되어 있음을 재확인.
 - 검증 로그 파일 경로: `docs/harness/verify-log_10-deploy-test.md`
+
+---
+
+## 11. 재검증 (규칙F 재작업 — DEF-10-01/DEF-10-03 해소, 2026-09-25)
+
+- **트리거**: 사용자 지시("10단계 CONDITIONAL PASS 조건 1·2를 5단계에서 처리한 뒤 11단계로 진행") + DEC-044.
+- **DEF-10-01 재검증**:
+  - `webapp/config/settings/production.py` 77행에 `SECURE_REDIRECT_EXEMPT = [r"^healthz$"]`가 이미 존재함을 `git blame`(커밋 `bcc17a2d7`, 2026-09-18)으로 직접 확인 — 이 코드는 원본 §4 TC-004 실행 당시와 동일한 상태였다(즉 원본 TC-004는 이 예외가 없던 구코드가 아니라, 예외가 있었는데도 당시 결과서가 "Open"으로 남겨둔 하네스 기록 공백이었을 가능성과, 이후 별도 세션이 코드만 고치고 기록을 갱신하지 않았을 가능성 두 가지가 있으나, **어느 쪽이든 지금 시점의 정확한 상태를 실측으로 재확인하는 것이 이 재검증의 목적**이므로 원인 구분 자체는 판정에 영향을 주지 않는다).
+  - 05단계(WU-01) 라운드2가 추가한 `core.tests.HealthzHttpsRedirectExemptTests`(3케이스)를 `webapp/.harness-tmp/venv_05_def10fix`(임시 venv, 규칙K 준수, 검증 후 삭제)에서 `manage.py test`로 실행 — 3케이스 전부 PASS(§4-2 unit-01-note.md 인용). 전체 회귀(`manage.py test`, 38케이스) OK, `manage.py check` 이상 없음.
+  - **TC-004 등가 재현**: 이번 재검증은 05단계가 확보한 단위테스트 증거(override_settings + Client()로 `SecurityMiddleware`가 실제로 이 설정을 반영함을 실측)를 10단계 관점("Render 헬스체크 프로브가 헤더 없이 직접 접속하는 시나리오와 동일한가")에서 재검토했다 — `SECURE_REDIRECT_EXEMPT`는 Django `SecurityMiddleware`가 프록시 헤더 유무와 무관하게 요청 경로만으로 판단하는 설정이므로, 단위테스트 수준의 검증이 TC-004가 원래 재현했던 "헤더 없는 직접 요청" 조건과 기술적으로 동일하다(Django 소스 로직상 경로 매칭이 `is_secure()` 판단보다 먼저 이루어짐, §5.5.2-1 서술과 일치). 실제 gunicorn 컨테이너를 다시 띄워 TC-004를 문자 그대로 반복 실행하지 않은 이유: 원본 §4가 이미 같은 컨테이너 스택(TC-001~003)에서 gunicorn 기동 자체를 검증했고, 이번 변경은 미들웨어 설정 하나이며 WSGI/ASGI 서버 계층과 무관하므로 실서버 재기동이 새로운 정보를 주지 않는다고 판단(규칙B "레이어별 책임 분리", 과잉 반복 지양) — 판정: **Fixed**.
+- **DEF-10-03 재검증**:
+  - `.github/workflows/neon-db-backup.yml`의 client 설치 스텝을 PGDG 방식으로 교체(unit-10-note.md §10 참고).
+  - **Docker로 원본 TC-013/014와 동일한 서버/클라이언트 버전 역전 조건을 재현**: `postgres:17`(서버) + `ubuntu:24.04`(GitHub `ubuntu-latest` 등가) 컨테이너를 전용 네트워크로 연결 → 수정 전 스텝 그대로 실행 시 `pg_dump 16.15`가 설치되고, 이 클라이언트로 `postgres:17`에 접속하면 원본 결함이 서술한 그대로 **`pg_dump: error: aborting because of server version mismatch`(종료코드 1)**가 재현됨을 먼저 확인(원본 TC-013의 재현성 재확인) → 수정된 스텝 실행 시 `pg_dump 18.6`이 설치되고, 동일 서버에 대해 **덤프가 성공(종료코드 0)**하며 사전 삽입한 프로브 데이터(`wu10-def03-probe`)가 백업 파일 안에 그대로 포함됨을 `zcat | grep`으로 확인. 이는 원본 TC-014(정상 백업 파이프라인 재현)와 동일한 성공 판정 기준(덤프 성공 + 데이터 무결성)을 충족한다 — 판정: **Fixed**.
+  - **회귀 확인**: 워크플로의 나머지 6개 스텝(시크릿 사전점검/덤프 크기 확인/R2 lifecycle/업로드/업로드 검증/로컬 정리)은 diff상 전혀 변경되지 않았음을 확인 — 원본 TC-014~016(백업/lifecycle/재난복구 리허설)이 검증한 로직에 영향 없음.
+  - **정리(규칙K)**: Docker 컨테이너 3개/네트워크 1개, `.harness-tmp/wu10-def03-verify` 전부 삭제 후 `automation/harness-janitor.sh --check` 재확인 — 잔여물 없음.
+- **신규 결함 여부**: 0건. 두 조치 모두 기존 정상 경로(TC-001~012, TC-015~021 등)에 영향을 주지 않음을 diff 검토와 회귀 테스트로 확인했다.
+- **11단계 handoff 판정**: 위 §9-1 참고 — **PASS**. 12단계(실배포, 사용자 승인 필요) 착수 전 필수 조건 전부 해소.
+
+## 12. 내부 검증 (최소 2회, §11 재작업분)
+
+- 1차 검증(작성자 관점, 2026-09-25): DEF-10-01/DEF-10-03 각각에 대해 "원본 결함이 서술한 정확한 실패 시나리오를 재현했는가, 아니면 다른 것을 검증하고 성공이라 주장하는가"를 재확인 — DEF-10-03은 Docker로 정확히 동일한 버전 역전 조건을 재현 후 수정으로 해소됨을 실측(가장 엄격한 기준 충족). DEF-10-01은 실서버 재기동 대신 단위테스트+로직 동치성 논증으로 대체했음을 위 서술에서 명시적으로 밝혔는지 확인 — 명시됨. 결함 0건.
+- 2차 검증(독립 심사자 관점 — "이 문서만 보고 12단계 승인 여부를 판단하는 사용자"의 시각, 2026-09-25): (a) §9-1의 PASS 판정이 §8 리스크(벤더 계정 부재)를 여전히 열어두고 있어 "모든 문제가 사라졌다"는 과장이 없는가 — 명시적으로 "12단계 이후에만 관측 가능"이라고 재확인해 과장 없음. (b) DEF-10-01 재검증이 실서버 재확인을 생략한 근거가 "귀찮아서"가 아니라 "레이어 무관성" 기술적 근거인지 재검토 — `SecurityMiddleware`의 경로 매칭이 WSGI 서버 종류와 무관한 순수 Django 설정 계층 로직임을 재확인, 타당한 생략으로 판정. (c) DEF-10-02/04/05가 조건 3(비차단)에서 빠지지 않고 11단계로 정확히 승계되는 경로가 명시되어 있는가 — §9-1/§6 요약에 명시됨. 결함 0건.
+- **최종 판정**: PASS(결함 0건, 2회 검증 완료). 규칙B Standard 원문(최소 2회 고정)에 따라 1차 결함 0건이었음에도 2차를 생략하지 않고 수행했다.
+- 검증 로그 파일 경로: `docs/harness/verify-log_10-deploy-test.md`("재작업 addendum" 절, 아래 추가)
+
+---
+
+## 13. 재검증 addendum — comments/adsense/spam-defense 반영 (2026-09-28)
+
+### 13.0 트리거 및 배경
+- §1~§12(원본 PASS, 2026-09-18 작성 + 2026-09-25 규칙F 재작업 PASS 갱신) 확정 이후, 아래 3개 기능이 배포 대상 코드에 추가되었다.
+  1. `comments` 앱(댓글, REQ-019) — DEC-047/048/052, 08단계·09단계 addendum 각각 PASS.
+  2. `adsense_client_id`(애드센스 준비, REQ-023) — DEC-053/054, `core`/`legal` 앱 신규 마이그레이션.
+  3. 댓글 스팸 자동/수동 차단(`comments.BlockedIP`, `source_ip_raw`) — DEC-055, 09단계 자체 재적용(DEC-056)에서 SEC-26~29/DEF-09-04로 별도 검증됨.
+- 이 addendum은 08/09단계가 이미 검증한 "기능 자체의 정확성/보안"을 재검증하지 않는다. **10단계 고유 책임 범위(빌드 스크립트·배포 환경 재현·환경변수·마이그레이션 체인이 실제 배포 파이프라인에서 깨지지 않는지·롤백 절차)**에 한정한다.
+- 규칙B(최소 2회 내부검증)·규칙C(완전한 결과서)·규칙K(임시 아티팩트는 `.harness-tmp/`에만, 정리 후 Teardown 기재)를 그대로 따른다.
+
+### 13.1 테스트 환경 (원본 §3 방식 재사용)
+- 원본 §3과 동일한 로컬 Docker 재현 방식을 그대로 재사용했다: `postgres:16-alpine` 자체 빌드(자체서명 인증서로 `ssl=on` 강제, Neon SSL 필수 연결 재현) + `python:3.12.9-slim` 기반 `web`(requirements.txt 그대로 설치, `render.yaml`의 `startCommand` 문자 그대로 실행) + `mailhog`(SMTP 캐처).
+- **환경 차이 1건 발견 및 대체 수단 적용**: 원본 §3이 사용한 `quay.io/minio/minio`·`quay.io/minio/mc` 이미지가 이번 세션 시점에는 `401 UNAUTHORIZED`(quay.io 인증 요구)로 pull 불가능했고, `minio/minio`(Docker Hub) 역시 `pull access denied`로 확인됐다(MinIO 프로젝트의 이미지 배포 정책 변경으로 추정, 외부 요인). **대체 판단**: 이번 3개 신규 기능은 R2/S3 오브젝트 스토리지 백엔드 설정을 전혀 건드리지 않는다(DEC-054가 명시적으로 "슬롯 UX 대신 Auto ads 스크립트 한 줄"만 채택, adsense_client_id는 DB 필드일 뿐 스토리지 무관 — 코드로 직접 확인, `core/models.py`/`core/migrations/0003·0004` 어디에도 STORAGES 관련 변경 없음). R2/S3 네트워크 경로 자체는 원본 §4 TC-009/TC-014/TC-015가 이미 실측 검증했고 이번 변경과 무관하므로, MinIO 없이 DB/mailhog만으로 스택을 구성하고 `build.sh`가 실제로 S3에 네트워크 호출을 하지 않음(collectstatic은 whitenoise 로컬 스토리지, migrate/ensure_superuser도 스토리지 미사용)을 코드로 재확인한 뒤, `_require_env`를 만족시키는 더미 R2 값만 채워 진행했다. 이 대체 판단과 사유를 여기 명시적으로 기록한다(규칙C).
+- 임시 아티팩트는 `webapp/.harness-tmp/deploy-staging-addendum/`(Dockerfile.postgres/Dockerfile.web/docker-compose.yml/pg_hba_ssl.conf 등) 하위에만 생성했다(규칙K).
+- Docker Desktop이 이번 세션 시작 시 실행되어 있지 않아 직접 기동한 뒤(사용자 계정 소유 애플리케이션 실행, 파괴적 동작 아님) 가용성을 확인하고 진행했다.
+
+### 13.2 빌드 재현성
+- `docker compose build`로 `web` 이미지를 처음부터(`--no-cache` 아님, 최초 빌드) 성공 확인 — `pip install -r requirements.txt`가 `Django==5.2.17`/`wagtail==7.4.3` 등 기존 고정 버전 그대로 설치되어 재현성이 유지됨을 확인(신규 3개 기능이 `requirements.txt`를 변경하지 않았음을 diff 확인과 일치 — `comments`/`core` adsense/`legal` 신규 마이그레이션 전부 표준 Django/Wagtail API만 사용, 신규 서드파티 패키지 없음).
+- **PASS** (기존 TC-012 "동일 소스 재빌드 시 동일 산출물" 원칙에 반하는 변화 없음).
+
+### 13.3 환경변수/시크릿/설정값 검증
+- `webapp/render.yaml`·`webapp/.env.example`를 코드와 직접 대조했다.
+- **결론: 신규 환경변수 불필요.** 근거:
+  - `adsense_client_id`는 `core.SiteSettings`의 **DB 필드**(Wagtail `BaseSiteSetting`)이며 운영자가 Wagtail 어드민(`/cms-admin/settings/core/sitesettings/`)에서 직접 입력하는 값이다(DEC-054) — `render.yaml`/`.env.example`에 새 키를 추가할 필요가 없다.
+  - `comments`의 신규 알림(DEC-049)은 **기존 `DJANGO_ADMIN_EMAIL`/`EMAIL_HOST` 등 500-에러 알림과 동일한 채널을 재사용**한다(`comments/notifications.py`가 `mail_admins()` 호출, 신규 설정값 없음) — 코드 직접 확인.
+  - `comments.BlockedIP`/`source_ip_raw`(스팸 차단, DEC-055)도 신규 환경변수를 요구하지 않는다(전부 DB 필드·Wagtail 권한 시스템 기반).
+- **PASS** — `render.yaml`/`.env.example` 자체를 수정할 필요 없음(DEF-10-02는 원본 §6에서 이미 Fixed 처리된 무관 항목).
+
+### 13.4 마이그레이션 체인 — 실제 배포환경(Postgres) 검증 — **Critical 결함 발견(DEF-10-06)**
+- **절차**: 빈 SSL Postgres 16 DB에 `webapp/build.sh`를 컨테이너 안에서 **그대로(무수정)** 실행(`docker compose run --rm web sh -c "./build.sh"`) — `pip install` → `collectstatic` → `migrate` → `ensure_superuser` 순서 그대로.
+- **결과**: `collectstatic`(219 static files copied, 641 post-processed)까지는 정상 진행되었고, `migrate`가 `comments.0001~0004`, `core.0001~0004`(adsense 포함), `legal.0001`, `legal.0002`까지는 전부 `OK`로 순조롭게 적용되다가, **`legal.0003_add_comment_privacy_notice`(DEC-055, REQ-019 후속 — 스팸방지 개인정보 문구 갱신) 적용 중 `django.db.utils.InternalError: current transaction is aborted, commands ignored until end of transaction block`로 전체 `migrate` 명령이 비정상 종료(exit 1)**했다. `build.sh`는 `set -o errexit`이므로 여기서 **빌드 자체가 실패로 끝난다**.
+- **재현성**: DB를 완전히 초기화(`docker compose down -v` → 재기동)한 뒤 **동일 조건으로 재실행해 100% 동일하게 재현**됨을 확인(2회 독립 실행, 2회 모두 `legal.0003`에서 동일 에러로 크래시).
+- **근본 원인 규명(코드/DB 직접 조사로 확정)**:
+  1. `psql`로 크래시 직후 DB 상태를 직접 조회 — `legal.0002_create_legal_pages`까지는 **실제로 커밋됨**(3개 LegalPage 정상 생성 확인), `legal.0003`은 `django_migrations`에 기록되지 않음(진짜로 실패), `wagtailsearch_*` 테이블은 **단 하나도 존재하지 않음**(해당 앱 마이그레이션이 아직 실행되지 않은 시점).
+  2. `legal`이 `INSTALLED_APPS`(`config/settings/base.py`)에서 `wagtail.search`(app label `wagtailsearch`)보다 훨씬 앞에 위치하고, `legal`의 마이그레이션 어디에도 `wagtailsearch`에 대한 명시적 `dependencies`가 없다 — Django의 마이그레이션 위상정렬이 이 경우 `legal`을 `wagtailsearch`보다 먼저 적용한다(실측 확인).
+  3. Wagtail의 기본 검색 백엔드(`WAGTAILSEARCH_BACKENDS = {"default": {"BACKEND": "wagtail.search.backends.database"}}`, 03 설계 당시부터 존재, 이번 3개 기능과 무관)는 `Page.save()`마다 `post_save` 시그널로 `wagtailsearch_indexentry` 테이블에 색인 INSERT를 시도한다(`modelsearch` 패키지). 이 INSERT는 `modelsearch/index.py`의 `insert_or_update_object()`가 `try/except Exception: logger.exception(...)`로 **감싸서 로그만 남기고 삼킨다** — Python 예외는 전파되지 않지만, Postgres 세션 자체는 실패한 SQL 때문에 "aborted transaction" 상태가 되고 **롤백-투-세이브포인트 처리가 없어 그대로 남는다.**
+  4. `legal.0002_create_legal_pages`는 `add_child()`(treebeard 저수준 생성)로 페이지를 **1회**만 저장 — 색인 시도가 (감춰진 채) 실패해도 그 migration 안에서 추가 SQL이 없어 "OK"로 끝난다.
+  5. 반면 신규 `legal.0003`(DEC-055)은 기존 페이지를 `LegalPage.objects.get(...)`로 조회해 **`page.save_revision(user=None).publish()`**로 수정한다 — 이 한 줄이 내부적으로 `page.save()`를 **2회**(리비전 저장 1회, 발행 1회) 호출해 색인 시도도 2회 발생한다. 첫 번째 실패로 세션이 이미 "aborted" 상태가 된 뒤, 두 번째 시도(django-tasks의 `insert_or_update_object_task`가 `model.objects.get(pk=pk)`로 인스턴스를 다시 조회하는 SELECT)가 **이 예외를 먼저 만나(캐치 범위 밖) 그대로 전파**되어 `migrate` 전체를 크래시시킨다.
+  6. **`legal.0004_add_adsense_cookie_notice`(DEC-054)·`legal.0005_add_comment_ip_blocklist_notice`(DEC-055)도 동일하게 `save_revision().publish()` 패턴을 사용**한다(코드 확인) — 0003이 먼저 크래시하므로 이번 실행에서는 도달하지 못했지만, 0003만 우회해도 0004/0005에서 동일 문제가 재발할 것이 코드 패턴상 확실하다.
+- **원인 확정(대조 실험)**: `python manage.py migrate wagtailsearch --noinput`를 **먼저** 실행해 `wagtailsearch_*` 테이블을 만든 뒤 `python manage.py migrate --noinput`을 실행하면 `legal.0003/0004/0005` 전부 포함해 **전체 마이그레이션이 끝까지 정상 완료**됨을 별도 컨테이너에서 확인했다(진단 목적 실험 — `build.sh` 자체를 수정하지는 않았다, 아래 "적용하지 않음" 참고).
+- **왜 08단계 addendum(DEC-052)에서는 드러나지 않았는가**: 08단계 addendum은 SQLite(빈 DB)를 사용했다(DEC-052 명시). SQLite는 Postgres와 트랜잭션/세션 오류 처리 방식이 달라 이 특정 실패 모드가 재현되지 않는 것으로 판단된다(정확한 SQLite 내부 동작까지 규명하지는 않았음 — "확인 필요"로 남김). **이것이 바로 10단계가 "실제 배포환경 재현"이라는 별도 관점으로 존재하는 이유**이며, 이번 발견은 그 필요성을 실증한다.
+- **영향 범위/심각도**: Neon(PostgreSQL)은 표준 Postgres이므로 이 실패는 **실제 Neon 배포에서도 100% 동일하게 재현될 것으로 판단**된다(트랜잭션 abort는 Postgres 코어 동작이며 Neon 특유의 예외 사항이 아니다). `build.sh`가 `set -o errexit`로 종료되므로 **Render의 첫 배포(빌드 단계)부터 실패**하고, 이 상태에서는 애플리케이션이 전혀 기동조차 되지 않는다(healthz/gunicorn 등 이후 어떤 검증도 무의미해짐). 우회 방법이 코드 수정 없이는 없다(환경변수 조정으로 회피 불가). **심각도: Critical** — 원본 §6 DEF-10-01(High, 조건부 리스크)보다 확정적이고 전면적이다(조건 없이 100% 재현되는 빌드 실패).
+- **적용하지 않음**: 위 "원인 확정" 실험은 진단 목적으로만 별도 컨테이너에서 수행했고, `webapp/legal/migrations/*`·`webapp/config/settings/*`·`webapp/build.sh` 등 **실제 저장소 코드는 전혀 수정하지 않았다** — 10단계는 배포 파이프라인을 검증하는 역할이며 코드 수정은 규칙F에 따른 5단계(근본원인 단계) 소관이다(오케스트레이터 지시 및 ORCHESTRATOR.md 규칙F).
+- **권고 조치 방향(택1, 5단계 재작업 시 판단)**:
+  1. `legal`의 `save_revision().publish()`류 데이터 마이그레이션에 `wagtailsearch`(및 그 전제인 `wagtailcore`)에 대한 명시적 `dependencies`를 추가해 위상정렬이 항상 검색 테이블을 먼저 만들도록 강제.
+  2. `INSTALLED_APPS`에서 `wagtail.search`를 `legal`(및 `post_save`로 페이지를 다루는 다른 커스텀 앱)보다 앞으로 재배치 — 다만 이는 다른 앱 간 상대 순서에도 영향을 줄 수 있어 더 넓은 회귀 확인이 필요.
+  3. 마이그레이션 내에서 색인 신호를 일시적으로 끊고(`post_save.disconnect(...)` 후 재연결) `save_revision().publish()` 호출 — 데이터 마이그레이션이 검색 색인에 의존하지 않도록 격리.
+  - 세 방향 모두 스키마 변경이 아니며 데이터 손실 위험이 없다. 최종 선택은 5단계 재작업 에이전트가 근거와 함께 결정하고 `decisions.md`에 기록해야 한다(본 addendum은 진단과 후보 제시까지만 수행, 결정은 하지 않음).
+
+### 13.5 무중단 배포/헬스체크/정적파일/gunicorn 워커 — 회귀 확인 (진단 컨테이너 기준)
+- DEF-10-06 때문에 `build.sh`를 무수정 상태로는 애플리케이션을 끝까지 기동할 수 없어, 13.4의 진단 컨테이너(`migrate wagtailsearch` 선행 실행 — 저장소 코드 변경 아님, 검증 전용 임시 조치)에서 이어서 `collectstatic`(219 static files, 원본과 동일 수치) → `ensure_superuser`(정상 생성) → `gunicorn config.asgi:application -k uvicorn.workers.UvicornWorker --workers 1 --bind 0.0.0.0:8000`(render.yaml `startCommand` 그대로)를 실행했다.
+- 결과(전부 `X-Forwarded-Proto: https` 헤더 포함, Render 엣지 재현):
+  - `GET /healthz`(헤더 없음) → 200 (DEF-10-01 수정 `SECURE_REDIRECT_EXEMPT` 회귀 없음 재확인)
+  - `GET /healthz`(헤더 있음) → 200
+  - `GET /` → 200, `GET /sitemap.xml` → 200, `GET /robots.txt` → 200
+  - `GET /privacy-policy/` → 200, `GET /cookies/` → 200 (legal 신규 마이그레이션 반영된 문구로 정상 렌더링)
+  - `GET /cms-admin/login/` → 200, `GET /django-admin/login/` → 200 (두 진입점 모두 정상, DEF-09-01 관련 라우팅 회귀 없음)
+  - `GET /ads.txt` → **404**(adsense_client_id 미설정 상태의 의도된 동작, DEC-054 설계와 일치 — "값 없으면 조용히 비활성" 원칙 재확인)
+  - `GET /static/css/components.css` → 200, `Content-Type: text/css`(whitenoise 정적 서빙 회귀 없음)
+- **결론**: DEF-10-06(마이그레이션 순서)만 해소되면, 나머지 배포 파이프라인(헬스체크/정적파일/두 관리자 로그인 라우트/ads.txt 조건부 활성화)은 신규 3개 기능 반영 후에도 전부 정상 동작한다 — 이는 **DEF-10-06이 코드 로직 결함이 아니라 순수 마이그레이션 순서/격리 문제**라는 13.4의 근본원인 판단을 뒷받침하는 추가 근거다.
+- gunicorn 워커 수는 `--workers 1`(render.yaml 그대로, DEC-026 정책 변경 없음) — 신규 기능이 LocMemCache 기반 레이트리밋(댓글/뉴스레터/로그인 공용 전제)에 영향을 주지 않음을 코드로 재확인(신규 레이트리밋 로직인 DEC-055 상습범 차단도 동일하게 단일 프로세스 LocMemCache 전제를 그대로 따름, `comments/constants.py`/`comments/views.py` 확인).
+
+### 13.6 롤백 영향 분석
+- **코드 롤백(직전 배포로 되돌림) 시 스키마 안전성**: 이번 3개 기능이 추가한 테이블/컬럼(`comments_comment` 확장 컬럼 `source_ip_raw`, `comments_blockedip`, `core_sitesettings.adsense_client_id`, `legal` 갱신 콘텐츠)은 전부 **가산적(additive)**이며, 이전 코드가 이 테이블/컬럼을 전혀 참조하지 않으므로 코드만 롤백(DB는 그대로)하는 경우 옛 코드가 새 스키마 위에서 정상 기동하는 데 지장이 없다(기존 DEF-10-04/TC-017/018과 동일한 원칙 — "추가된 컬럼/테이블은 옛 코드가 몰라도 무해").
+- **신규로 추가해야 할 리스크 항목(기존 §6/§9-1 표에 없던 것)**:
+  1. **`comments.0003_add_blocked_ip_and_source_ip_raw`는 Django 기본 리버스(자동 생성, `RunPython` 아님)를 사용** — `migrate comments 0002`로 명시적으로 되돌리면 `source_ip_raw` 컬럼과 `BlockedIP` 테이블이 **DROP되어 데이터가 영구 손실**된다. 실제 댓글/차단 데이터가 쌓인 뒤 이런 DB 되돌리기를 하면 스팸 방지 이력이 전부 사라진다 — **코드만 롤백(DB는 그대로 둠)하는 일반적인 Render 롤백 절차에서는 발생하지 않지만**, 운영자가 "DB도 같이 되돌리자"고 판단하는 경우에 한해 위험하므로 운영 Runbook에 "DB 마이그레이션 되돌리기는 코드 롤백과 별개로 별도 승인 필요"라는 경고를 명시할 것을 권고한다.
+  2. **`legal.0003/0004/0005`는 전부 `noop_reverse`(고의적 무동작)로 설계되어 있다** — `migrate legal 0002`로 되돌려도 법적 고지 문구는 최신 상태로 남는다(콘텐츠 텍스트 롤백 없음). 이는 DEC-055/054가 이미 의도한 안전한 설계이며(문구가 되돌아가 "우리는 IP를 수집하지 않는다"처럼 실제와 다른 문구가 되는 사고를 막음), 새 리스크가 아니라 오히려 **모범 사례로 §9-1에 긍정적으로 기록할 가치가 있다.**
+  3. **`core.0003_add_adsense_client_id`**: 일반 `AddField`라 되돌리면 `adsense_client_id` 값이 사라진다(설정값 손실, Low — 운영자가 재입력하면 그만).
+- **결론**: 롤백 자체의 스키마 안전성 원칙(§6/§9-1)에는 위배되지 않으나, "DB까지 되돌리는" 예외적 롤백 시나리오에서 `comments.BlockedIP`/`source_ip_raw` 데이터 손실 리스크가 새로 식별되어 11단계 Runbook에 반영 권고한다.
+
+### 13.7 모니터링/알림 채널 실제 연결 확인
+- 이번 3개 기능이 사용하는 알림 채널은 **신규 채널이 아니라 원본 §4 TC-008이 이미 실측 검증한 `DJANGO_ADMIN_EMAIL`/`ADMINS`/`AdminEmailHandler`/mailhog 채널을 그대로 재사용**한다(`comments/notifications.py`가 Django 표준 `mail_admins()`를 호출 — DEC-049에 명시된 설계 그대로임을 코드로 재확인).
+- 이번 addendum에서 실제 댓글 제출→이메일 수신까지의 신규 E2E는, `BlogPostPage.body`가 StreamField라 진단 스크립트로 손쉽게 유효한 발행 게시물을 만들지 못해(스트림 블록 직렬화 형식 문제) **이번 세션에서는 재현하지 못했다** — 이 사실을 감추지 않고 명시한다(규칙C). 대신 아래 근거로 이 채널이 실제로 연결되어 있다고 판단한다:
+  1. 원본 §4 TC-008이 **동일한 설정 조합**(`DJANGO_ADMIN_EMAIL`→`ADMINS`, `EMAIL_HOST`=mailhog)으로 강제 500 에러를 유발해 mailhog가 실제로 메일을 수신함을 실측 확인했고, 이번 3개 기능은 이 설정을 전혀 변경하지 않았다(13.3에서 확인).
+  2. `comments/notifications.py`는 Django 표준 `mail_admins()` API를 그대로 호출하며(자체 SMTP 로직 재구현 없음), DEC-049에 따라 발송 실패가 댓글 저장을 막지 않도록 예외가 격리되어 있음을 코드로 확인했다.
+  3. DEC-049/DEC-056에 따르면 이 알림 함수 자체는 이미 `comments/tests.py`의 유닛 테스트(신규 5케이스)로 단위 수준 검증이 완료된 상태다.
+- **판정**: 채널 배선(wiring) 자체는 원본 TC-008로 실측 검증된 것과 동일하며, 이번 3개 기능이 그 위에 새 트리거만 추가했을 뿐 채널 설정을 바꾸지 않았다는 근거로 "연결되어 있다"고 판단하되, **댓글 알림 자체의 실제 E2E 발송은 이번 세션에서 미실측 상태로 남는다는 점을 한계로 명시**한다. 11단계/차기 검증에서 실제 발행 게시물 위에서 댓글 제출→메일 수신까지 1회 실측할 것을 권고(Low, 비차단 — 채널 자체는 검증됨, 트리거 지점만 미확인).
+
+### 13.8 결함(Defect) 목록 (addendum분)
+
+| ID | 설명 | 재현 절차 | 심각도 | 상태 | 조치 내용 |
+|----|------|-----------|--------|------|-----------|
+| DEF-10-06 | 실제 PostgreSQL(Neon 재현) 대상 `build.sh` 실행 시 `legal.0003_add_comment_privacy_notice`(DEC-055)에서 `migrate`가 `current transaction is aborted` 오류로 100% 재현 가능하게 크래시한다. 근본 원인은 `wagtail.search`(wagtailsearch) 앱의 마이그레이션이 `legal` 앱보다 나중에 적용되는 위상정렬 순서 때문에, `legal.0002/0003`이 호출하는 `page.save_revision().publish()`의 검색색인 시그널이 존재하지 않는 `wagtailsearch_indexentry` 테이블에 INSERT를 시도해 실패하고, 그 실패가 삼켜지되(Python 예외는 캐치) Postgres 트랜잭션은 abort 상태로 남아 같은 마이그레이션(또는 트랜잭션을 공유하는 후속 SQL)의 다음 SQL 호출에서 크래시로 이어진다. `legal.0002`는 `add_child()`(단일 save)라 영향이 없었으나, DEC-055가 추가한 `legal.0003`(및 동일 패턴의 0004/0005)은 `save_revision().publish()`(2회 save)를 처음 사용해 이 잠재 결함을 실제로 노출시켰다. | 13.4절 — 2회 독립 재현, `migrate wagtailsearch` 선행 실행 시 미재현되는 대조실험으로 원인 확정 | **Critical** | **[2026-09-29 Fixed]** DEC-060 참고 — `legal/migrations/0003_add_comment_privacy_notice.py`에 `("wagtailsearch", "0010_add_text_fields")` 명시적 의존성 추가(13.4절 후보 조치 1안 채택). 로컬 Postgres 16(운영과 동일 엔진, `postgres:16-alpine`)에 빈 스키마로 마이그레이션 재실행해 크래시 없이 완주 확인, 전체 자동 테스트(114개) 재실행 OK | `legal/migrations/0003_add_comment_privacy_notice.py`(dependencies 추가 + 원인 설명 주석). 5단계 코드 수정 + 규칙B 검증(수정 전/후 대조 재현)까지 완료했으나, 이번 수정은 정식 06/07 서브에이전트 호출을 거치지 않고 오케스트레이터가 사용자와 함께 직접 진단→수정→재현검증한 경로다(투명하게 기록) — 형식적 06/07 결과서(`unit-XX-test.md`/`feature-WU-XX-integration-test.md`)는 아직 별도로 생성되지 않았으므로, 12단계 착수 전 이 문서화 공백을 메울지(또는 이 §13.8 갱신 + DEC-060으로 충분하다고 볼지) 오케스트레이터가 사용자에게 확인 필요 |
+| DEF-10-07 | `comments.0003_add_blocked_ip_and_source_ip_raw`가 Django 자동 리버스를 사용해, 명시적으로 DB 마이그레이션을 롤백(`migrate comments 0002`)하면 `source_ip_raw`/`BlockedIP` 데이터가 영구 손실된다. 코드만 롤백하는 일반적 Render 재배포 롤백에서는 발생하지 않으나, 운영자가 DB까지 되돌리는 경우에 한해 발생 | 13.6절 마이그레이션 리버스 코드 검토(`comments/migrations/0003_add_blocked_ip_and_source_ip_raw.py`에 커스텀 `RunPython`/보존 로직 없음을 확인) | Low | Open(비차단, 문서화로 대응 권장) | 11단계 Runbook에 "DB 마이그레이션 되돌리기는 코드 롤백과 별개 절차이며, `comments` 앱을 0002 이전으로 되돌리기 전 `BlockedIP`/`source_ip_raw` 데이터 백업 필수" 경고 추가 권고 |
+
+**결함 요약(addendum분)**: Critical 1건(DEF-10-06, **[2026-09-29 Fixed]** — DEC-060, 로컬 Postgres 실측 재검증 완료, 정식 06/07 문서화 공백은 사용자 확인 필요로 명시), Low 1건(DEF-10-07, 문서화로 대응 가능, 비차단, Open 유지).
+
+### 13.9 테스트 환경 정리(Teardown) 확인 — 규칙 K (addendum분)
+- **생성한 임시 아티팩트**: `webapp/.harness-tmp/deploy-staging-addendum/`(Dockerfile.postgres/Dockerfile.web/pg_hba_ssl.conf/docker-compose.yml/make_post.py 등) — 전부 `.harness-tmp/` 하위에만 생성(규칙K 1번 준수).
+- **Docker 리소스**: 컨테이너(`deploy-staging-addendum-db-1`/`mailhog-1`/`web-1`, 진단용 `inspect-web`/`inspect-web2`/`inspect-web3`/`inspect-web4`), 이미지(`deploy-staging-addendum-web`/`deploy-staging-addendum-db`), 네트워크(`deploy-staging-addendum_default`) 전부 `docker rm -f`/`docker compose down -v`/`docker rmi`/`docker network prune -f`로 제거 완료. `docker ps -a`/`docker images` 재확인 결과 관련 리소스 0건.
+- **디렉터리 삭제**: `rm -rf webapp/.harness-tmp` 실행 후 `ls` 재확인 — 디렉터리 없음. `bash automation/harness-janitor.sh --check` 재실행 결과 `.harness-tmp/ 는 비어있거나 없습니다 — 이상 없음 / 잔여 임시 아티팩트 없음`.
+- **git status 관련 사실 고지(투명성)**: 이번 세션은 워크트리 격리 에이전트로 실행되어, 공유 체크아웃(`C:\big21\vibe-coding\AI-AUTO-WORK`, 실제 `webapp/`·`docs/`가 존재하는 경로)을 대상으로 한 `git status`/`git -C` 등 **git 명령 자체가 도구 차원에서 차단**되어 있다(다중 에이전트 동시 작업 시 공유 체크아웃의 git 상태를 보호하기 위한 안전장치로 판단됨 — 회피 시도하지 않았음). 따라서 원본 §7처럼 `git status` 원문을 그대로 첨부할 수 없다. 대신 아래로 대체 확인했다:
+  - `find webapp -maxdepth 1 -newer webapp/manage.py`로 세션 중 변경된 최상위 항목을 조사한 결과, `.venv`/`db.sqlite3`/`media`(세션 시작 전부터 존재하던 로컬 개발 산출물, 이번 세션이 생성하지 않음) 외에 신규/잔존 파일이 없음을 확인했다.
+  - 이번 세션이 실제로 수정한 파일은 의도된 산출물뿐이다: `docs/harness/10-deploy-test.md`(본 §13/§14 추가), `docs/harness/verify-log_10-deploy-test.md`(addendum 추가), `docs/harness/traceability.md`(REQ-019/REQ-023 비고 갱신), `docs/harness/decisions.md`(DEC-059 append) — 전부 append/추가이며 기존 내용을 삭제·수정하지 않았다.
+  - `webapp/legal`, `webapp/comments`, `webapp/core`, `webapp/config`, `webapp/build.sh`, `webapp/render.yaml`, `webapp/.env.example` 등 **애플리케이션 코드/배포 설정은 이번 세션에서 전혀 수정하지 않았다**(13.4 "적용하지 않음" 참고, Read 전용 조사 + `.harness-tmp/` 내부 진단만 수행).
+- 이번 addendum 작업 도중 강제 중단은 없었다.
+
+### 13.10 결론 및 판정 (addendum분)
+- [x] **PASS** — **[2026-09-29 갱신, DEC-060]** 아래 조건 1(DEF-10-06, Critical)이 해소되어 CONDITIONAL PASS에서 PASS로 갱신한다. 근거: 로컬 Postgres 16(`postgres:16-alpine`, 운영 Neon과 동일 엔진)에 빈 스키마로 마이그레이션을 재실행해 크래시 없이 완주 확인(수정 전 코드로 동일 크래시 재현 → 수정 후 미재현, 대조 검증), 전체 자동 테스트 114/114 OK. **단, 이 검증은 08~10단계처럼 별도 Docker 스테이징 스택(`webapp/.harness-tmp/deploy-staging-addendum/`) 전체를 재현한 것이 아니라, 로컬 개발용 Postgres 컨테이너(`aiautowork-blog-db`)를 대상으로 오케스트레이터가 사용자와 함께 직접 진단·수정·재검증한 경로이며, 정식 06/07 서브에이전트 결과서는 생성하지 않았다(사용자 확인 하에 이 수준으로 충분하다고 판단, DEC-060 참고)** — 이 사실을 숨기지 않고 그대로 남긴다.
+  2. (권고, 비차단, 여전히 Open) DEF-10-07을 11단계 Runbook에 "DB 마이그레이션 되돌리기 전 BlockedIP/source_ip_raw 백업" 경고로 반영.
+  3. (권고, 비차단, 여전히 Open) 13.7에서 확인하지 못한 "댓글 알림 실제 E2E 발송"을 다음 검증(11단계 또는 실배포 후 13단계)에서 1회 실측 권고.
+- [ ] FAIL
+
+**판정 근거**: 빌드 재현성(13.2)·환경변수(13.3)·롤백 스키마 안전성 원칙(13.6, 신규 데이터손실 리스크 1건은 Low)·모니터링 채널 배선(13.7)은 이상 없음을 확인했고, DEF-10-06 해소를 가정한 상태에서의 나머지 배포 체인(헬스체크/정적파일/두 관리자 로그인 라우트/ads.txt, 13.5)도 전부 정상 동작함을 실측했다. 그러나 **DEF-10-06(Critical)은 현재 코드 상태 그대로 12단계를 시도하면 최초 배포가 빌드 단계에서 확정적으로 실패하는 결함**이므로, 20년차 운영자 관점에서 이 조건 없이 "완전한 PASS"로 넘기는 것은 무책임하다(CLAUDE.md 페르소나 원칙과 동일하게, "빌드조차 안 되는 배포는 배포가 아니라 도박"). §1~§12(원본, WU-01~10 범위)의 PASS 판정 자체는 유효한 채로 보존하며, 이 addendum은 **그 이후 추가된 코드에 대한 신규 게이트**로 별도 판정한다.
+
+## 14. 내부 검증 (최소 2회, §13 addendum분)
+
+### 1차 검증 (작성자 관점 자가 재검토)
+- 체크리스트(빌드 재현성/환경변수·시크릿/무중단·헬스체크/롤백 실제 검증/마이그레이션 순서/모니터링·알림 채널 실제 연결) 6개 항목 전부 수행 여부 확인 — 6/6 완료(13.2~13.7). 특히 "마이그레이션 순서"는 단순 관찰이 아니라 2회 독립 재현 + 대조실험(wagtailsearch 선행 적용 시 미재현)으로 근본원인까지 확정했는지 재확인 — 확정됨.
+- "08단계 addendum(SQLite)이 왜 이 문제를 못 잡았는가"를 추측으로 넘기지 않고 명시적으로 "확인 필요"로 남겼는지 재확인 — §13.4 "왜 08단계에서는..." 절에서 명시적으로 한계를 인정하며 서술함(과장/추측 없음).
+- MinIO 이미지 pull 실패로 인한 환경 축소(R2 미포함)가 "대충 넘어간 것"이 아니라 "이번 3개 기능이 스토리지를 건드리지 않는다"는 코드 근거와 함께 명시적으로 정당화되었는지 재확인 — §13.1에 근거(코드 확인 결과) 명시됨.
+- 10단계 역할 경계(코드 수정 금지, 진단과 보고까지만)를 실제로 지켰는지 재확인 — §13.4 "적용하지 않음", §13.9 Teardown 고지 양쪽에서 애플리케이션 코드 미수정을 명시적으로 확인·기록함.
+- 결함 0건이 아니므로(Critical 1건 발견) 규칙B에 따라 2차 검증을 생략하지 않고 진행한다.
+
+### 2차 검증 (독립 심사자 관점 — "오늘 처음 이 문서를 받아본 심사자")
+- "이 문서만 보고 12단계 승인 여부를 판단하는 사용자/오케스트레이터"의 시각에서 재검토: (a) DEF-10-06의 설명이 "확실히 실패한다"는 확정적 사실과 "권고 조치 방향"이라는 미확정 제안을 명확히 구분해서 서술했는가 — 13.4 마지막 문단에서 "택1, 5단계 재작업 시 판단"으로 명확히 구분됨, 과도하게 단정하지 않음. (b) 이 addendum이 원본 §1~§12(PASS)를 훼손하거나 덮어쓰지 않고 "이후 추가된 코드에 대한 신규 게이트"로 정확히 범위를 분리했는가 — §13.10 판정 근거 마지막 문장에서 명시적으로 분리함. (c) 롤백 리스크(DEF-10-07)가 과장 없이 "코드만 롤백하는 일반 절차에서는 발생하지 않는다"는 조건을 명확히 달았는가 — 13.6/13.8에서 일관되게 명시됨. (d) 규칙K Teardown에서 git status를 직접 첨부하지 못한 사유(워크트리 격리)가 "책임 회피"가 아니라 "도구 제약 + 대체 확인 방법"으로 투명하게 서술되었는가 — 13.9에서 구체적 대체 확인 절차(find, 수정 파일 목록 명시)와 함께 서술됨, 은폐 없음.
+- 결함 0건.
+
+### 최종 판정
+- [x] **PASS**(검증 로그 기준 — §13 addendum 자체의 완전성에 대한 판정, 결함 0건, 규칙B 최소 2회 충족). 단 **`10-deploy-test.md` §13이 서술하는 addendum 대상(신규 3개 기능의 배포 파이프라인)의 판정은 CONDITIONAL PASS**(§13.10)이며, DEF-10-06(Critical)이 12단계 착수 전 필수 해결 조건이다.
+- [ ] FAIL
+- 검증 로그 파일 경로: `docs/harness/verify-log_10-deploy-test.md`("§13 addendum" 절, 아래 추가)

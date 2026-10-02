@@ -102,6 +102,10 @@ REQ-005/REQ-017 구조화 데이터 — 값이 유효한 JSON으로 안전하게
     {% include_block page.body %}
   </div>
 
+  {% comment %}CommentList/CommentForm(REQ-019, v1.5) — 04 §2 S-02 "본문 → 댓글목록 → 댓글폼 → 뉴스레터" 배치 순서.{% endcomment %}
+  {% include "comments/_comment_list.html" %}
+  {% include "comments/_comment_slot.html" with post=page %}
+
   {% comment %}NewsletterSubscribeForm(REQ-016) — 04 §2 S-02 "본문 하단 인라인". Footer는 기본값(숨김)을 그대로 둬 중복 배치를 피한다.{% endcomment %}
   {% include "subscribers/_newsletter_slot.html" with form_id="post-detail" %}
 </article>

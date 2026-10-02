@@ -211,3 +211,11 @@ flowchart TD
     K --> L["traceability.md 갱신(10)"]
     L --> M["PASS -> 8단계(전체 풀테스트) 진행"]
 ```
+
+---
+
+## 부록 — 재작업 라운드 2 (규칙F, `SiteSettings.contact_email` 신설, 2026-09-25)
+
+- **트리거**: `unit-08-note.md` §10(신규 모델 `core.models.SiteSettings`, DEC-045).
+- **07단계 관점 재확인**: 신규 모델이 `core` 앱(이 WU 소유)에 정확히 배정되었는가(03 §1.2 모듈 경계와 일치) — 확인. 마이그레이션이 다른 앱(blog/legal/subscribers 등)의 스키마에 영향을 주지 않는가 — `0002_initial.py`가 `CreateModel` 하나만 포함하고 `wagtailcore.Site`에 대한 `OneToOneField` 참조만 있음을 확인, 다른 도메인 모델 변경 없음. `INSTALLED_APPS`에 `wagtail.contrib.settings` 추가가 기존 Wagtail 어드민 메뉴/URL 라우팅과 충돌하지 않는가 — `manage.py check`(dev/production 양쪽) 이상 없음으로 확인.
+- **판정**: PASS — 신규 결함 없음. 8단계 재실행 불필요 판단 근거: 신규 필드 기본값(빈 문자열)이 기존 화면 렌더링 결과를 전혀 바꾸지 않음을 실측 확인(`unit-08-note.md` §10), 마이그레이션 체인 자체는 `manage.py migrate` 전체 재적용 경로에 자동으로 포함되므로 별도 8단계 재실행 없이도 다음 실제 마이그레이션 실행 시 자연히 검증된다.

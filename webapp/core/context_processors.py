@@ -18,3 +18,21 @@ rel=next/prev 권고는 폐기됨)에 어긋나 2페이지 이후가 색인에�
 
 def canonical_url(request):
     return {"canonical_url": request.build_absolute_uri()}
+
+
+def contact_email(request):
+    """SiteSettings.contact_email을 전역 템플릿 컨텍스트에 노출한다(WU-08
+    규칙F 재작업, DEC-045). `BaseSiteSetting.for_request()`는 요청당
+    캐시되므로 페이지마다 추가 쿼리를 반복하지 않는다."""
+    from core.models import SiteSettings
+
+    return {"contact_email": SiteSettings.for_request(request).contact_email}
+
+
+def adsense_client_id(request):
+    """SiteSettings.adsense_client_id를 전역 템플릿 컨텍스트에 노출한다
+    (DEC-053). 값이 비어 있으면 base.html의 애드센스 스크립트 태그와
+    legal_page.html의 광고 쿠키 안내 모두 렌더링되지 않는다."""
+    from core.models import SiteSettings
+
+    return {"adsense_client_id": SiteSettings.for_request(request).adsense_client_id}

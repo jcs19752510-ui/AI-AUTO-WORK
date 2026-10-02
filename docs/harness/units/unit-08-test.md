@@ -92,3 +92,12 @@
 - 1차 검증 결과 요약: AC1~19 커버리지 100% 확인, 예상 결과가 모두 `unit-08-note.md` §8 원문 및 03-system-design.md §4/§6.3/§7.2 명세에 근거함을 재확인. 결함 0건.
 - 2차 검증 결과 요약: "이 테스트를 통과했다고 7단계에 넘겨도 되는가"를 의심하며 재검토 — 권한 경계(access_admin 있음/없음 조합, TC-026 보강), 캐시 백엔드 장애(TC-022/023), 스냅샷 0건 상태(TC-024), 관리자 이메일 파싱 경계값(TC-027~029), 사이드바 등록 실측(TC-025) 등 AC에 없던 경계 조건을 추가 발굴해 검증. 전부 PASS, 결함 0건.
 - 검증 로그 파일 경로: `docs/harness/units/verify-log_unit-08-test.md`
+
+---
+
+## 부록 — 재작업 라운드 2 (규칙F, `SiteSettings.contact_email` 신설, 2026-09-25)
+
+- **신규 AC**: `unit-08-note.md` §10 참고 — (1) `makemigrations core`가 정확히 1개 마이그레이션(`0002_initial.py`, `CreateModel SiteSettings`)만 생성하는가, (2) `makemigrations --check --dry-run` → "No changes detected", (3) dev/production 유사 설정 양쪽 `manage.py check` 이상 없음, (4) 전체 회귀 `manage.py test`(기존 38 + legal 신규 4 = 42) OK.
+- **실행 결과**: 전부 PASS(`unit-08-note.md` §10 로컬 검증 인용). 신규 결함 0건.
+- **회귀 판단**: `contact_email` 기본값이 빈 문자열이라 이 필드가 존재하기 전과 렌더링 결과가 100% 동일함을 `legal.tests.PrivacyPolicyContactEmailTests.test_no_contact_block_when_unset`으로 직접 확인 — 기존 AC1~19를 반복 재실행하지 않고 이 대표 케이스로 회귀 없음을 판정(규칙B 레이어별 책임 분리).
+- **판정**: PASS — 다음 단계는 7단계(`feature-WU-08-integration-test.md`) addendum. 8/9단계 재실행 불필요 판단 근거는 `unit-08-note.md` §10 참고.
